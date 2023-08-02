@@ -18,8 +18,13 @@ export default class Task extends ETL {
         if (type === SchemaType.Input) {
             return {
                 type: 'object',
-                required: [],
+                required: ['RefreshToken'],
                 properties: {
+                    'RefreshToken': {
+                        type: 'string',
+                        description: 'Active911 Supplied API Token'
+
+                    },
                     'DEBUG': {
                         type: 'boolean',
                         default: false,
@@ -39,7 +44,48 @@ export default class Task extends ETL {
     async control(): Promise<void> {
         const layer = await this.layer();
 
-        if (!layer.environment.ARCGIS_URL) throw new Error('No ArcGIS_URL Provided');
+        Object.assign(layer.environment, process.env);
+
+        /* Waiting on Application to Finalize
+        if (!layer.environment.RefreshToken) throw new Error('No RefreshToken Provided');
+        console.error(String(layer.environment.RefreshToken));
+        let token = await fetch(new URL('https://access.active911.com/interface/open_api/token.php'), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: new URLSearchParams({
+                grant_type: 'refresh_token',
+                scope: 'read_agency read_alert read_response read_device read_mapdata write_mapdata',
+                refresh: String(layer.environment.RefreshToken)
+            })
+        });
+        */
+
+
+        let alerts = await fetch(new URL('https://access.active911.com/interface/open_api/api/alerts'), {
+            method: 'GET',
+            headers: {
+                Authorization: `Bearer ${process.env.Token}`
+            }
+        });
+
+        if (!alerts.ok) throw new Error(await alerts.text());
+        let alerts_body: any = await alerts.json();
+
+        for (const a of alerts_body.message.alerts) {
+            let alert = await fetch(new URL(a.uri), {
+                method: 'GET',
+                headers: {
+                    Authorization: `Bearer ${process.env.Token}`
+                }
+            });
+
+            if (!alert.ok) throw new Error(await alert.text());
+            let alert_body = await alert.json();
+
+            console.error(alert_body);
+        }
 
         const fc: FeatureCollection = {
             type: 'FeatureCollection',
