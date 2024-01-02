@@ -98,11 +98,43 @@ export default class Task extends ETL {
             const parsed = parse(alerts, { columns: true });
 
             for (const p of parsed) {
+                if (p.place.trim().length) {
+                    const coords = p.place
+                        .trim()
+                        .split(',')
+                        .map((c: string) => { return Number(c) })
+                        .slice(0, 2);
+
+                    if (coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
+                        fc.features.push({
+                            id: `active911-${p.id}-staging`,
+                            type: 'Feature',
+                            properties: {
+                                callsign: `Staging: ${p.description}`,
+                                time: moment(p.send).toISOString(),
+                                remarks: `
+                                    Groups: ${p.units}
+                                    Author: ${p.source}
+                                    ${p.details}
+                                `
+                            },
+                            geometry: {
+                                type: 'Point',
+                                coordinates: [coords[1], coords[0]]
+                            }
+                        });
+                    }
+                }
+
+                if (Number(p.lon) === 0 ||  Number(p.lat) === 0) {
+                    continue;
+                }
+
                 fc.features.push({
                     id: `active911-${p.id}`,
                     type: 'Feature',
                     properties: {
-                        callsign: `911: ${p.description}`,
+                        callsign: `Subject: ${p.description}`,
                         time: moment(p.send).toISOString(),
                         remarks: `
                             Groups: ${p.units}
