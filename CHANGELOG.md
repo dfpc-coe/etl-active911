@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v1.6.0
+
+- :rocket: Use GPS location
+
 ### v1.5.0
 
 - :rocket: The Active911 API is horrible and their support makes it almost impossible to get setup
