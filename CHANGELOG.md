@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v1.7.0
+
+- :rocket: Parse Staging Coordinates from `Place` field
+
 ### v1.6.0
 
 - :rocket: Use GPS location
