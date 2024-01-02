@@ -1,7 +1,9 @@
 import fs from 'node:fs';
+import moment from 'moment-timezone';
 import { FeatureCollection } from 'geojson';
 import ETL, { Event, SchemaType } from '@tak-ps/etl';
 import { JSONSchema6Object } from 'json-schema';
+import { parse } from 'csv-parse/sync'
 
 try {
     const dotfile = new URL('.env', import.meta.url);
@@ -18,11 +20,16 @@ export default class Task extends ETL {
         if (type === SchemaType.Input) {
             return {
                 type: 'object',
-                required: ['RefreshToken'],
+                required: ['Username', 'Password'],
                 properties: {
-                    'RefreshToken': {
+                    'Username': {
                         type: 'string',
-                        description: 'Active911 Supplied API Token'
+                        description: 'Active911 Username'
+
+                    },
+                    'Password': {
+                        type: 'string',
+                        description: 'Active911 Password'
 
                     },
                     'DEBUG': {
@@ -44,53 +51,76 @@ export default class Task extends ETL {
     async control(): Promise<void> {
         const layer = await this.layer();
 
-        Object.assign(layer.environment, process.env);
+        const loginForm = new FormData();
+        loginForm.append('operation', 'login');
+        loginForm.append('post_data', JSON.stringify({
+            username: layer.environment.Username,
+            password: layer.environment.Password,
+            permanent: 0,
+            timeInitiated: +new Date() / 1000
+        }));
 
-        /* Waiting on Application to Finalize
-        if (!layer.environment.RefreshToken) throw new Error('No RefreshToken Provided');
-        console.error(String(layer.environment.RefreshToken));
-        let token = await fetch(new URL('https://access.active911.com/interface/open_api/token.php'), {
+        const login = JSON.parse((await (await fetch("https://interface.active911.com/interface/interface.ajax.php", {
+            referrer: "https://interface.active911.com/interface/",
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: new URLSearchParams({
-                grant_type: 'refresh_token',
-                scope: 'read_agency read_alert read_response read_device read_mapdata write_mapdata',
-                refresh: String(layer.environment.RefreshToken)
-            })
-        });
-        */
-
-
-        let alerts = await fetch(new URL('https://access.active911.com/interface/open_api/api/alerts'), {
-            method: 'GET',
-            headers: {
-                Authorization: `Bearer ${process.env.Token}`
-            }
-        });
-
-        if (!alerts.ok) throw new Error(await alerts.text());
-        let alerts_body: any = await alerts.json();
-
-        for (const a of alerts_body.message.alerts) {
-            let alert = await fetch(new URL(a.uri), {
-                method: 'GET',
-                headers: {
-                    Authorization: `Bearer ${process.env.Token}`
-                }
-            });
-
-            if (!alert.ok) throw new Error(await alert.text());
-            let alert_body = await alert.json();
-
-            console.error(alert_body);
-        }
+            body: loginForm,
+        })).text())
+            .trim()
+            .replace(/^\(/, '')
+            .replace(/\)$/, '')
+        ).message;
 
         const fc: FeatureCollection = {
             type: 'FeatureCollection',
             features: []
         };
+
+        for (const agency of login.agencies) {
+            const agencyForm = new FormData();
+            agencyForm.append('operation', 'get_archived_alerts_csv');
+            agencyForm.append('auth', login.jwt);
+            agencyForm.append('post_data', JSON.stringify({
+                agency_id: agency.id,
+                from_date: 1703487600000,
+                to_date: 1704092400000
+            }));
+
+            const alerts = JSON.parse((await (await fetch("https://interface.active911.com/interface/interface.ajax.php", {
+                referrer: "https://interface.active911.com/interface/",
+                method: "POST",
+                body: agencyForm
+            })).text())
+                .trim()
+                .replace(/^\(/, '')
+                .replace(/\)$/, '')
+            ).message;
+
+            const parsed = parse(alerts, { columns: true });
+
+            for (const p of parsed) {
+                console.error('address', p.address);
+                console.error('place', p.place);
+                console.error('lat/lon', p.lat, p.lon);
+                fc.features.push({
+                    id: `active911-${p.id}`,
+                    type: 'Feature',
+                    properties: {
+                        callsign: p.description,
+                        time: moment(p.send).toISOString(),
+                        remarks: `
+                            Groups: ${p.units}
+                            Author: ${p.source}
+                            ${p.details}
+                        `
+                    },
+                    geometry: {
+                        type: 'Point',
+                        coordinates: []
+                    }
+                });
+            }
+
+        }
 
         await this.submit(fc);
     }
