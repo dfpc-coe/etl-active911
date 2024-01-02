@@ -10,6 +10,11 @@
 
 ## Version History
 
+### v1.5.0
+
+- :rocket: The Active911 API is horrible and their support makes it almost impossible to get setup
+            Just mock their own UI calls is far simpler and works with any account
+
 ### v1.4.0
 
 - :rocket: Migrate to TypeScript
