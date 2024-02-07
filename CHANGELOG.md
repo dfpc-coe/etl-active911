@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v2.0.0
+
+- :rocket: Update to latest token strategy
+
 ### v1.7.0
 
 - :rocket: Parse Staging Coordinates from `Place` field
