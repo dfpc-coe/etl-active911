@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v2.1.0
+
+- :rocket: Update deps & remove subject prefix for more generic usage
+
 ### v2.0.0
 
 - :rocket: Update to latest token strategy

@@ -134,7 +134,7 @@ export default class Task extends ETL {
                     id: `active911-${p.id}`,
                     type: 'Feature',
                     properties: {
-                        callsign: `Subject: ${p.description}`,
+                        callsign: `${p.description}`,
                         time: moment(p.send).toISOString(),
                         remarks: `
                             Groups: ${p.units}
