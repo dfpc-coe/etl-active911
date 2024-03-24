@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v2.1.1
+
+- :bug: Fix initial whitespace for clients who don't trim()
+
 ### v2.1.0
 
 - :rocket: Update deps & remove subject prefix for more generic usage
