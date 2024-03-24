@@ -112,11 +112,7 @@ export default class Task extends ETL {
                             properties: {
                                 callsign: `Staging: ${p.description}`,
                                 time: moment(p.send).toISOString(),
-                                remarks: `
-                                    Groups: ${p.units}
-                                    Author: ${p.source}
-                                    ${p.details}
-                                `
+                                remarks: `Groups: ${p.units}\n Author: ${p.source}\n ${p.details}`
                             },
                             geometry: {
                                 type: 'Point',
