@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v2.3.2
+
+- :arrow_up: Update ETL Base
+
 ### v2.3.1
 
 - :rocket: Schema is instnace method
