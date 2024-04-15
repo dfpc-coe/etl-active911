@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v2.2.0
+
+- :bug: Update to latest ETL Version
+
 ### v2.1.1
 
 - :bug: Fix initial whitespace for clients who don't trim()

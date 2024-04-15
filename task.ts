@@ -1,8 +1,8 @@
 import fs from 'node:fs';
+import { Type, TSchema } from '@sinclair/typebox';
 import moment from 'moment-timezone';
 import { FeatureCollection } from 'geojson';
 import ETL, { Event, SchemaType } from '@tak-ps/etl';
-import { JSONSchema6Object } from 'json-schema';
 import { parse } from 'csv-parse/sync'
 
 try {
@@ -16,40 +16,20 @@ try {
 }
 
 export default class Task extends ETL {
-    static async schema(type: SchemaType = SchemaType.Input): Promise<JSONSchema6Object> {
+    static async schema(type: SchemaType = SchemaType.Input): Promise<TSchema> {
         if (type === SchemaType.Input) {
-            return {
-                type: 'object',
-                required: ['Username', 'Password'],
-                properties: {
-                    'Username': {
-                        type: 'string',
-                        description: 'Active911 Username'
-
-                    },
-                    'Password': {
-                        type: 'string',
-                        description: 'Active911 Password'
-
-                    },
-                    'DEBUG': {
-                        type: 'boolean',
-                        default: false,
-                        description: 'Print ADSBX results in logs'
-                    }
-                }
-            };
+            return Type.Object({
+                Username: Type.String({ description: 'Active911 Username' }),
+                Password: Type.String({ description: 'Active911 Password' }),
+                DEBUG: Type.Boolean({ description: 'Print ADSBX results in logs', default: false })
+            })
         } else {
-            return {
-                type: 'object',
-                required: [],
-                properties: {}
-            };
+            return Type.Object({});
         }
     }
 
     async control(): Promise<void> {
-        const layer = await this.layer();
+        const layer = await this.fetchLayer();
 
         const loginForm = new FormData();
         loginForm.append('operation', 'login');
