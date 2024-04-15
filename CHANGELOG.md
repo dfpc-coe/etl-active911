@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v2.3.0
+
+- :rocket: Use Task Helper fns
+
 ### v2.2.0
 
 - :bug: Update to latest ETL Version
