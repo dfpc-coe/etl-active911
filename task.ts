@@ -6,7 +6,7 @@ import ETL, { Event, SchemaType, handler as internal, local, env } from '@tak-ps
 import { parse } from 'csv-parse/sync'
 
 export default class Task extends ETL {
-    static async schema(type: SchemaType = SchemaType.Input): Promise<TSchema> {
+    async schema(type: SchemaType = SchemaType.Input): Promise<TSchema> {
         if (type === SchemaType.Input) {
             return Type.Object({
                 Username: Type.String({ description: 'Active911 Username' }),

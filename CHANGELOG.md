@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v2.3.1
+
+- :rocket: Schema is instnace method
+
 ### v2.3.0
 
 - :rocket: Use Task Helper fns
