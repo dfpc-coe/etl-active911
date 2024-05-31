@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import { Type, TSchema } from '@sinclair/typebox';
 import moment from 'moment-timezone';
 import { FeatureCollection } from 'geojson';
