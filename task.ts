@@ -10,6 +10,9 @@ export default class Task extends ETL {
             return Type.Object({
                 Username: Type.String({ description: 'Active911 Username' }),
                 Password: Type.String({ description: 'Active911 Password' }),
+                Agencies: Type.Array(Type.Object({
+                    AgencyId: Type.String()
+                })),
                 DEBUG: Type.Boolean({ description: 'Print ADSBX results in logs', default: false })
             })
         } else {
@@ -44,7 +47,20 @@ export default class Task extends ETL {
             features: []
         };
 
-        for (const agency of login.agencies) {
+        const filteredAgencies = [];
+        if (layer.environment.Agencies && layer.environment.Agencies.length) {
+            const ids = new Set();
+            layer.environment.Agencies.forEach((a) => { ids.add(a.id) });
+            filteredAgencies = login.agencies.filter((a) => {
+                return ids.has(a.id);
+            })
+        } else {
+            filteredAgencies = login.agencies.map((a) => {
+                return a.id;
+            });
+        }
+
+        for (const agency of filteredAgencies) {
             const agencyForm = new FormData();
             agencyForm.append('operation', 'get_archived_alerts_csv');
             agencyForm.append('auth', login.jwt);

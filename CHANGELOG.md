@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v2.4.0
+
+- :rocket: Add preliminary support for Agency filtering on a single account
+
 ### v2.3.3
 
 - :arrow_up: Update Core Deps
