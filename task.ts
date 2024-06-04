@@ -47,15 +47,15 @@ export default class Task extends ETL {
             features: []
         };
 
-        const filteredAgencies = [];
-        if (layer.environment.Agencies && layer.environment.Agencies.length) {
+        let filteredAgencies: Number[] = [];
+        if (layer.environment.Agencies && Array.isArray(layer.environment.Agencies) && layer.environment.Agencies.length) {
             const ids = new Set();
             layer.environment.Agencies.forEach((a) => { ids.add(a.id) });
-            filteredAgencies = login.agencies.filter((a) => {
+            filteredAgencies = login.agencies.filter((a: { id: number }) => {
                 return ids.has(a.id);
             })
         } else {
-            filteredAgencies = login.agencies.map((a) => {
+            filteredAgencies = login.agencies.map((a: { id: number }) => {
                 return a.id;
             });
         }
@@ -65,7 +65,7 @@ export default class Task extends ETL {
             agencyForm.append('operation', 'get_archived_alerts_csv');
             agencyForm.append('auth', login.jwt);
             agencyForm.append('post_data', JSON.stringify({
-                agency_id: agency.id,
+                agency_id: agency,
                 from_date: moment().subtract(6, 'hours').unix() * 1000,
                 to_date:   moment().unix() * 1000
             }));
