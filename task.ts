@@ -50,10 +50,12 @@ export default class Task extends ETL {
         let filteredAgencies: Number[] = [];
         if (layer.environment.Agencies && Array.isArray(layer.environment.Agencies) && layer.environment.Agencies.length) {
             const ids = new Set();
-            layer.environment.Agencies.forEach((a) => { ids.add(a.id) });
+            layer.environment.Agencies.forEach((a) => { ids.add(parseInt(a.AgencyId)) });
             filteredAgencies = login.agencies.filter((a: { id: number }) => {
                 return ids.has(a.id);
-            })
+            }).map((a: { id: number }) => {
+                return a.id;
+            });
         } else {
             filteredAgencies = login.agencies.map((a: { id: number }) => {
                 return a.id;
