@@ -2,7 +2,7 @@
     "name": "coe-active911",
     "type": "module",
     "prviate": true,
-    "version": "2.4.1",
+    "version": "2.4.2",
     "description": "",
     "main": "index.js",
     "scripts": {
