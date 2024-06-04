@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v2.4.1
+
+- :bug: Fix build bugs
+
 ### v2.4.0
 
 - :rocket: Add preliminary support for Agency filtering on a single account
