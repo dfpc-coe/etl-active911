@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v2.4.2
+
+- :bug: Squash a couple bugs related to agency filtering
+
 ### v2.4.1
 
 - :bug: Fix build bugs
