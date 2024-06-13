@@ -4,25 +4,26 @@ import { FeatureCollection } from 'geojson';
 import ETL, { Event, SchemaType, handler as internal, local, env } from '@tak-ps/etl';
 import { parse } from 'csv-parse/sync'
 
+const Env = Type.Object({
+    Username: Type.String({ description: 'Active911 Username' }),
+    Password: Type.String({ description: 'Active911 Password' }),
+    Token: Type.String({ description: 'Internal Active911 Token to avoid repeated login attempts' }),
+    Agencies: Type.Array(Type.Object({
+        AgencyId: Type.String()
+    })),
+    DEBUG: Type.Boolean({ description: 'Print ADSBX results in logs', default: false })
+});
+
 export default class Task extends ETL {
     async schema(type: SchemaType = SchemaType.Input): Promise<TSchema> {
         if (type === SchemaType.Input) {
-            return Type.Object({
-                Username: Type.String({ description: 'Active911 Username' }),
-                Password: Type.String({ description: 'Active911 Password' }),
-                Agencies: Type.Array(Type.Object({
-                    AgencyId: Type.String()
-                })),
-                DEBUG: Type.Boolean({ description: 'Print ADSBX results in logs', default: false })
-            })
+            return Env;
         } else {
             return Type.Object({});
         }
     }
 
-    async control(): Promise<void> {
-        const layer = await this.fetchLayer();
-
+    async controlLogin(layer: any): Promise<Number[]> {
         const loginForm = new FormData();
         loginForm.append('operation', 'login');
         loginForm.append('post_data', JSON.stringify({
@@ -42,99 +43,136 @@ export default class Task extends ETL {
             .replace(/\)$/, '')
         ).message;
 
+        await this.fetch(`/api/connection/${layer.connection}/layer/${layer.id}`, 'PATCH', {
+            environment: {
+                ...layer.environment,
+                Token: login.jwt
+            }
+        });
+
+        layer.environment.Token = login.jwt;
+
+        return login.agencies.map((a: { id: number }) => {
+            return a.id;
+        });
+    }
+
+    async control(): Promise<void> {
+        const layer = await this.fetchLayer();
+
+        let filteredAgencies: Number[] = [];
+        if (!layer.environment.Token || !Array.isArray(layer.environment.Agencies) || !layer.environment.Agencies.length) {
+            filteredAgencies = await this.controlLogin(layer);
+        }
+
+        if (Array.isArray(layer.environment.Agencies) && layer.environment.Agencies.length) {
+            filteredAgencies = layer.environment.Agencies.map((a) => {
+                return a.AgencyId;
+            });
+        }
+
         const fc: FeatureCollection = {
             type: 'FeatureCollection',
             features: []
         };
 
-        let filteredAgencies: Number[] = [];
-        if (layer.environment.Agencies && Array.isArray(layer.environment.Agencies) && layer.environment.Agencies.length) {
-            const ids = new Set();
-            layer.environment.Agencies.forEach((a) => { ids.add(parseInt(a.AgencyId)) });
-            filteredAgencies = login.agencies.filter((a: { id: number }) => {
-                return ids.has(a.id);
-            }).map((a: { id: number }) => {
-                return a.id;
-            });
-        } else {
-            filteredAgencies = login.agencies.map((a: { id: number }) => {
-                return a.id;
-            });
-        }
-
+        let errs: Error[] = [];
         for (const agency of filteredAgencies) {
-            const agencyForm = new FormData();
-            agencyForm.append('operation', 'get_archived_alerts_csv');
-            agencyForm.append('auth', login.jwt);
-            agencyForm.append('post_data', JSON.stringify({
-                agency_id: agency,
-                from_date: moment().subtract(6, 'hours').unix() * 1000,
-                to_date:   moment().unix() * 1000
-            }));
+            try {
+                const agencyForm = new FormData();
+                agencyForm.append('operation', 'get_archived_alerts_csv');
+                agencyForm.append('auth', String(layer.environment.Token));
+                agencyForm.append('post_data', JSON.stringify({
+                    agency_id: agency,
+                    from_date: moment().subtract(6, 'hours').unix() * 1000,
+                    to_date:   moment().unix() * 1000
+                }));
 
-            const alerts = JSON.parse((await (await fetch("https://interface.active911.com/interface/interface.ajax.php", {
-                referrer: "https://interface.active911.com/interface/",
-                method: "POST",
-                body: agencyForm
-            })).text())
-                .trim()
-                .replace(/^\(/, '')
-                .replace(/\)$/, '')
-            ).message;
+                const alerts_res = await fetch("https://interface.active911.com/interface/interface.ajax.php", {
+                    referrer: "https://interface.active911.com/interface/",
+                    method: "POST",
+                    body: agencyForm
+                })
 
-            const parsed = parse(alerts, { columns: true });
+                if (!alerts_res.ok) {
+                    console.error(await alerts_res.text())
+                    await this.fetch(`/api/connection/${layer.connection}/layer/${layer.id}`, 'PATCH', {
+                        environment: {
+                            ...layer.environment,
+                            Token: undefined
+                        }
+                    });
 
-            for (const p of parsed) {
-                if (p.place.trim().length) {
-                    const coords = p.place
-                        .trim()
-                        .split(',')
-                        .map((c: string) => { return Number(c) })
-                        .slice(0, 2);
-
-                    if (coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
-                        fc.features.push({
-                            id: `active911-${p.id}-staging`,
-                            type: 'Feature',
-                            properties: {
-                                callsign: `Staging: ${p.description}`,
-                                time: moment(p.send).toISOString(),
-                                remarks: `Groups: ${p.units}\n Author: ${p.source}\n ${p.details}`
-                            },
-                            geometry: {
-                                type: 'Point',
-                                coordinates: [coords[1], coords[0]]
-                            }
-                        });
-                    }
-                }
-
-                if (Number(p.lon) === 0 ||  Number(p.lat) === 0) {
+                    await this.controlLogin(layer)
                     continue;
                 }
 
-                fc.features.push({
-                    id: `active911-${p.id}`,
-                    type: 'Feature',
-                    properties: {
-                        callsign: `${p.description}`,
-                        time: moment(p.send).toISOString(),
-                        remarks: `
-                            Groups: ${p.units}
-                            Author: ${p.source}
-                            ${p.details}
-                        `
-                    },
-                    geometry: {
-                        type: 'Point',
-                        coordinates: [Number(p.lon), Number(p.lat)]
-                    }
-                });
-            }
+                const alerts = JSON.parse(
+                    (await alerts_res.text())
+                        .trim()
+                        .replace(/^\(/, '')
+                        .replace(/\)$/, '')
+                    ).message;
 
+                const parsed = parse(alerts, { columns: true });
+
+                for (const p of parsed) {
+                    if (p.place.trim().length) {
+                        const coords = p.place
+                            .trim()
+                            .split(',')
+                            .map((c: string) => { return Number(c) })
+                            .slice(0, 2);
+
+                        if (coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
+                            fc.features.push({
+                                id: `active911-${p.id}-staging`,
+                                type: 'Feature',
+                                properties: {
+                                    callsign: `Staging: ${p.description}`,
+                                    time: moment(p.send).toISOString(),
+                                    remarks: `Groups: ${p.units}\n Author: ${p.source}\n ${p.details}`
+                                },
+                                geometry: {
+                                    type: 'Point',
+                                    coordinates: [coords[1], coords[0]]
+                                }
+                            });
+                        }
+                    }
+
+                    if (Number(p.lon) === 0 ||  Number(p.lat) === 0) {
+                        continue;
+                    }
+
+                    fc.features.push({
+                        id: `active911-${p.id}`,
+                        type: 'Feature',
+                        properties: {
+                            callsign: `${p.description}`,
+                            time: moment(p.send).toISOString(),
+                            remarks: `
+                                Groups: ${p.units}
+                                Author: ${p.source}
+                                ${p.details}
+                            `
+                        },
+                        geometry: {
+                            type: 'Point',
+                            coordinates: [Number(p.lon), Number(p.lat)]
+                        }
+                    });
+                }
+            } catch(err) {
+                errs.push(err);
+            }
         }
 
         await this.submit(fc);
+
+        if (errs.length) {
+            throw new Error(JSON.stringify(errs));
+        }
     }
 }
 

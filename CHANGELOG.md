@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v2.5.0
+
+- :rocket: Store internal token to minimize login calls
+
 ### v2.4.2
 
 - :bug: Squash a couple bugs related to agency filtering
