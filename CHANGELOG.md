@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v2.8.0
+
+- :rocket: More error messages to attempt login on
+
 ### v2.7.1
 
 - :white_check_mark: Update GH Actions
