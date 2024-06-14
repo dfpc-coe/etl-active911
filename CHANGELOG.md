@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v2.7.0
+
+- :rocket: Smarter Login Tracking
+
 ### v2.6.0
 
 - :rocket: Parse Error Response
