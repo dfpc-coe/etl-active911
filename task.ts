@@ -24,6 +24,7 @@ export default class Task extends ETL {
     }
 
     async controlLogin(layer: any): Promise<Number[]> {
+        console.error('ok - Attempting Login');
         const loginForm = new FormData();
         loginForm.append('operation', 'login');
         loginForm.append('post_data', JSON.stringify({
@@ -59,10 +60,13 @@ export default class Task extends ETL {
 
     async control(): Promise<void> {
         const layer = await this.fetchLayer();
+        
+        let loginAttempted = false;
 
         let filteredAgencies: Number[] = [];
         if (!layer.environment.Token || !Array.isArray(layer.environment.Agencies) || !layer.environment.Agencies.length) {
             filteredAgencies = await this.controlLogin(layer);
+            loginAttempted = true;
         }
 
         if (Array.isArray(layer.environment.Agencies) && layer.environment.Agencies.length) {
@@ -77,7 +81,8 @@ export default class Task extends ETL {
         };
 
         let errs: Error[] = [];
-        for (const agency of filteredAgencies) {
+        for (let i = 0; i < filteredAgencies.length; i++) {
+            const agency = filteredAgencies[i];
             console.error(`ok - getting alerts from ${agency}`);
 
             try {
@@ -105,7 +110,11 @@ export default class Task extends ETL {
                         }
                     });
 
+                    if (loginAttempted) throw new Error('Login Attempted and bad response');
+    
                     await this.controlLogin(layer)
+                    loginAttempted = true;
+                    i--;
                     continue;
                 }
 
@@ -117,6 +126,13 @@ export default class Task extends ETL {
                     )
 
                 if (alerts.result === 'error') {
+                    if (!loginAttempted && alerts.message === 'Please log in') {
+                        await this.controlLogin(layer);
+                        loginAttempted = true;
+                        i--; 
+                        continue;
+                    }
+
                     throw new Error(alerts.message);
                 }
 
