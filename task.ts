@@ -23,7 +23,7 @@ export default class Task extends ETL {
         }
     }
 
-    async controlLogin(layer: any): Promise<Number[]> {
+    async controlLogin(layer: any): Promise<number[]> {
         console.error('ok - Attempting Login');
         const loginForm = new FormData();
         loginForm.append('operation', 'login');
@@ -63,7 +63,7 @@ export default class Task extends ETL {
         
         let loginAttempted = false;
 
-        let filteredAgencies: Number[] = [];
+        let filteredAgencies: number[] = [];
         if (!layer.environment.Token || !Array.isArray(layer.environment.Agencies) || !layer.environment.Agencies.length) {
             filteredAgencies = await this.controlLogin(layer);
             loginAttempted = true;
@@ -80,7 +80,7 @@ export default class Task extends ETL {
             features: []
         };
 
-        let errs: Error[] = [];
+        const errs: Error[] = [];
         for (let i = 0; i < filteredAgencies.length; i++) {
             const agency = filteredAgencies[i];
             console.error(`ok - getting alerts from ${agency}`);
