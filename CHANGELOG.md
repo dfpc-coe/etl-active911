@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v2.7.1
+
+- :white_check_mark: Update GH Actions
+
 ### v2.7.0
 
 - :rocket: Smarter Login Tracking
