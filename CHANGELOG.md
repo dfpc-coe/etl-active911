@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v2.6.0
+
+- :rocket: Parse Error Response
+
 ### v2.5.0
 
 - :rocket: Store internal token to minimize login calls

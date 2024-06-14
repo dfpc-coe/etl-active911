@@ -67,7 +67,7 @@ export default class Task extends ETL {
 
         if (Array.isArray(layer.environment.Agencies) && layer.environment.Agencies.length) {
             filteredAgencies = layer.environment.Agencies.map((a) => {
-                return a.AgencyId;
+                return parseInt(a.AgencyId);
             });
         }
 
@@ -78,6 +78,8 @@ export default class Task extends ETL {
 
         let errs: Error[] = [];
         for (const agency of filteredAgencies) {
+            console.error(`ok - getting alerts from ${agency}`);
+
             try {
                 const agencyForm = new FormData();
                 agencyForm.append('operation', 'get_archived_alerts_csv');
@@ -112,9 +114,13 @@ export default class Task extends ETL {
                         .trim()
                         .replace(/^\(/, '')
                         .replace(/\)$/, '')
-                    ).message;
+                    )
 
-                const parsed = parse(alerts, { columns: true });
+                if (alerts.result === 'error') {
+                    throw new Error(alerts.message);
+                }
+
+                const parsed = parse(alerts.message, { columns: true });
 
                 for (const p of parsed) {
                     if (p.place.trim().length) {
@@ -171,7 +177,7 @@ export default class Task extends ETL {
         await this.submit(fc);
 
         if (errs.length) {
-            throw new Error(JSON.stringify(errs));
+            throw new Error(JSON.stringify(errs.map((e) => { return e.message })));
         }
     }
 }
