@@ -126,7 +126,13 @@ export default class Task extends ETL {
                     )
 
                 if (alerts.result === 'error') {
-                    if (!loginAttempted && alerts.message === 'Please log in') {
+                    if (
+                        !loginAttempted
+                        && (
+                            alerts.message === 'Please log in'
+                            || alerts.message === 'You do not have permission to view alerts for this agency.'
+                        )
+                    ) {
                         await this.controlLogin(layer);
                         loginAttempted = true;
                         i--; 
