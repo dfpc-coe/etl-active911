@@ -1,4 +1,6 @@
-import { Type, TSchema } from '@sinclair/typebox';
+import { Static, Type, TSchema } from '@sinclair/typebox';
+import { CookieJar } from 'tough-cookie';
+import { CookieAgent } from 'http-cookie-agent/undici';
 import moment from 'moment-timezone';
 import { FeatureCollection } from 'geojson';
 import ETL, { Event, SchemaType, handler as internal, local, env } from '@tak-ps/etl';
@@ -7,7 +9,6 @@ import { parse } from 'csv-parse/sync'
 const Env = Type.Object({
     Username: Type.String({ description: 'Active911 Username' }),
     Password: Type.String({ description: 'Active911 Password' }),
-    Token: Type.String({ description: 'Internal Active911 Token to avoid repeated login attempts' }),
     Agencies: Type.Array(Type.Object({
         AgencyId: Type.String()
     })),
@@ -23,56 +24,22 @@ export default class Task extends ETL {
         }
     }
 
-    async controlLogin(layer: any): Promise<number[]> {
-        console.error('ok - Attempting Login');
-        const loginForm = new FormData();
-        loginForm.append('operation', 'login');
-        loginForm.append('post_data', JSON.stringify({
-            username: layer.environment.Username,
-            password: layer.environment.Password,
-            permanent: 0,
-            timeInitiated: +new Date() / 1000
-        }));
-
-        const login = JSON.parse((await (await fetch("https://interface.active911.com/interface/interface.ajax.php", {
-            referrer: "https://interface.active911.com/interface/",
-            method: 'POST',
-            body: loginForm,
-        })).text())
-            .trim()
-            .replace(/^\(/, '')
-            .replace(/\)$/, '')
-        ).message;
-
-        await this.fetch(`/api/connection/${layer.connection}/layer/${layer.id}`, 'PATCH', {
-            environment: {
-                ...layer.environment,
-                Token: login.jwt
-            }
-        });
-
-        layer.environment.Token = login.jwt;
-
-        return login.agencies.map((a: { id: number }) => {
-            return a.id;
-        });
-    }
-
     async control(): Promise<void> {
-        const layer = await this.fetchLayer();
-        
-        let loginAttempted = false;
+        const env = await this.env(Env);
 
-        let filteredAgencies: number[] = [];
-        if (!layer.environment.Token || !Array.isArray(layer.environment.Agencies) || !layer.environment.Agencies.length) {
-            filteredAgencies = await this.controlLogin(layer);
-            loginAttempted = true;
-        }
+        const jar = new CookieJar();
+        const agent = new CookieAgent({ cookies: { jar } });
+        const { agencies, token } = await this.controlLogin(agent, env);
 
-        if (Array.isArray(layer.environment.Agencies) && layer.environment.Agencies.length) {
-            filteredAgencies = layer.environment.Agencies.map((a) => {
-                return parseInt(a.AgencyId);
-            });
+        const filteredAgencies: number[] = [];
+        if (Array.isArray(env.Agencies) && env.Agencies.length) {
+            for (const a of env.Agencies) {
+                const id = parseInt(a.AgencyId);
+                if (!agencies.includes(id)) throw new Error(`Current user account does not provide access to agency: ${id}`);
+                filteredAgencies.push(id);
+            }
+        } else {
+            filteredAgencies.push(...agencies);
         }
 
         const fc: FeatureCollection = {
@@ -88,58 +55,39 @@ export default class Task extends ETL {
             try {
                 const agencyForm = new FormData();
                 agencyForm.append('operation', 'get_archived_alerts_csv');
-                agencyForm.append('auth', String(layer.environment.Token));
+                agencyForm.append('auth', token);
                 agencyForm.append('post_data', JSON.stringify({
                     agency_id: agency,
                     from_date: moment().subtract(6, 'hours').unix() * 1000,
                     to_date:   moment().unix() * 1000
                 }));
 
-                const alerts_res = await fetch("https://interface.active911.com/interface/interface.ajax.php", {
+                const alerts_res = await fetch(`https://interface.active911.com/interface/interface.ajax.php?callback=jQuery${+new Date()}`, {
+                    // @ts-expect-error Not In Fetch Type Def
+                    dispatcher: agent,
+                    headers: {
+                        Origin: 'https://interface.active911.com',
+                    },
                     referrer: "https://interface.active911.com/interface/",
                     method: "POST",
                     body: agencyForm
                 })
 
                 if (!alerts_res.ok) {
-                    console.error(await alerts_res.text())
-                    await this.fetch(`/api/connection/${layer.connection}/layer/${layer.id}`, 'PATCH', {
-                        environment: {
-                            ...layer.environment,
-                            Token: undefined
-                        }
-                    });
-
-                    if (loginAttempted) throw new Error('Login Attempted and bad response');
-    
-                    await this.controlLogin(layer)
-                    loginAttempted = true;
-                    i--;
+                    errs.push(new Error(await alerts_res.text()));
                     continue;
                 }
 
                 const alerts = JSON.parse(
                     (await alerts_res.text())
                         .trim()
-                        .replace(/^\(/, '')
+                        .replace(/^.*?\(/, '')
                         .replace(/\)$/, '')
                     )
 
                 if (alerts.result === 'error') {
-                    if (
-                        !loginAttempted
-                        && (
-                            alerts.message === 'Please log in'
-                            || alerts.message === 'You do not have permission to view alerts for this agency.'
-                        )
-                    ) {
-                        await this.controlLogin(layer);
-                        loginAttempted = true;
-                        i--; 
-                        continue;
-                    }
-
-                    throw new Error(alerts.message);
+                    errs.push(new Error(alerts.message));
+                    continue;
                 }
 
                 const parsed = parse(alerts.message, { columns: true });
@@ -202,6 +150,43 @@ export default class Task extends ETL {
             throw new Error(JSON.stringify(errs.map((e) => { return e.message })));
         }
     }
+
+    async controlLogin(agent: CookieAgent, env: Static<typeof Env>): Promise<{
+        token: string;
+        agencies: number[];
+    }> {
+        console.error('ok - Attempting Login');
+        const loginForm = new FormData();
+        loginForm.append('operation', 'login');
+        loginForm.append('post_data', JSON.stringify({
+            username: env.Username,
+            password: env.Password,
+            permanent: 0,
+            timeInitiated: +new Date() / 1000
+        }));
+
+        const login_res = await fetch("https://interface.active911.com/interface/interface.ajax.php", {
+            // @ts-expect-error Not In Fetch Type Def
+            dispatcher: agent,
+            referrer: "https://interface.active911.com/interface/",
+            method: 'POST',
+            body: loginForm,
+        })
+
+        const login = JSON.parse((await login_res.text())
+            .trim()
+            .replace(/^\(/, '')
+            .replace(/\)$/, '')
+        ).message
+
+        return {
+            token: login.jwt,
+            agencies: login.agencies.map((a: { id: number }) => {
+                return a.id;
+            })
+        };
+    }
+
 }
 
 env(import.meta.url)

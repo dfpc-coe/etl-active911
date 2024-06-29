@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v2.9.0
+
+- :rocket: Utilize new a911 Cookies for CSV request
+
 ### v2.8.0
 
 - :rocket: More error messages to attempt login on
