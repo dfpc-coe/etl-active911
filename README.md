@@ -2,6 +2,14 @@
 
 <p align='center'>Bring Active911 Alerts into the TAK System</p>
 
+## Configuration
+
+Setting up an Active911 ETL will require the following:
+
+- An Active911 User/Password that can login to the [online portal](https://interface.active911.com/interface/index.php)
+- The account should be created specifically for TAK and only 1 account should be used per layer as only 1 login can be active at a time
+- The account must have the permissions to view Alerts to be able to export the active alerts as a CSV
+
 ## Development
 
 DFPC provided Lambda ETLs are currently all written in [NodeJS](https://nodejs.org/en) through the use of a AWS Lambda optimized
