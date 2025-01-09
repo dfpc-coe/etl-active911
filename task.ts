@@ -2,8 +2,7 @@ import { Static, Type, TSchema } from '@sinclair/typebox';
 import { CookieJar } from 'tough-cookie';
 import { CookieAgent } from 'http-cookie-agent/undici';
 import moment from 'moment-timezone';
-import { FeatureCollection } from 'geojson';
-import ETL, { Event, SchemaType, handler as internal, local, env } from '@tak-ps/etl';
+import ETL, { Event, SchemaType, handler as internal, local, InputFeatureCollection } from '@tak-ps/etl';
 import { parse } from 'csv-parse/sync'
 
 const Env = Type.Object({
@@ -15,12 +14,41 @@ const Env = Type.Object({
     DEBUG: Type.Boolean({ description: 'Print ADSBX results in logs', default: false })
 });
 
+const OutputSchema = Type.Object({
+    id: Type.String(),
+    received: Type.String(),
+    sent: Type.String(),
+    priority: Type.String(),
+    description: Type.String(),
+    details: Type.String(),
+    external_data: Type.String(),
+    place: Type.String(),
+    address: Type.String(),
+    unit: Type.String(),
+    cross_street: Type.String(),
+    city: Type.String(),
+    state: Type.String(),
+    lat: Type.String(),
+    lon: Type.String(),
+    coordinate_source: Type.String(),
+    source: Type.String(),
+    units: Type.String(),
+    cad_code: Type.String(),
+    map_code: Type.String(),
+    map_id: Type.String(),
+    alert_key: Type.String(),
+    messages: Type.String(),
+    responses: Type.String(),
+});
+
 export default class Task extends ETL {
+    static name = 'etl-active911'
+
     async schema(type: SchemaType = SchemaType.Input): Promise<TSchema> {
         if (type === SchemaType.Input) {
             return Env;
         } else {
-            return Type.Object({});
+            return OutputSchema
         }
     }
 
@@ -42,7 +70,7 @@ export default class Task extends ETL {
             filteredAgencies.push(...agencies);
         }
 
-        const fc: FeatureCollection = {
+        const fc: Static<typeof InputFeatureCollection> = {
             type: 'FeatureCollection',
             features: []
         };
@@ -93,8 +121,10 @@ export default class Task extends ETL {
                 const parsed = parse(alerts.message, { columns: true });
 
                 for (const p of parsed) {
-                    if (p.place.trim().length) {
-                        const coords = p.place
+                     const activeAlert = this.type(OutputSchema, p)
+
+                    if (activeAlert.place.trim().length) {
+                        const coords = activeAlert.place
                             .trim()
                             .split(',')
                             .map((c: string) => { return Number(c) })
@@ -102,12 +132,12 @@ export default class Task extends ETL {
 
                         if (coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
                             fc.features.push({
-                                id: `active911-${p.id}-staging`,
+                                id: `active911-${activeAlert.id}-staging`,
                                 type: 'Feature',
                                 properties: {
-                                    callsign: `Staging: ${p.description}`,
-                                    time: moment(p.send).toISOString(),
-                                    remarks: `Groups: ${p.units}\n Author: ${p.source}\n ${p.details}`
+                                    callsign: `Staging: ${activeAlert.description}`,
+                                    time: moment(activeAlert.sent).toISOString(),
+                                    remarks: `Groups: ${activeAlert.units}\n Author: ${activeAlert.source}\n ${activeAlert.details}`
                                 },
                                 geometry: {
                                     type: 'Point',
@@ -117,25 +147,25 @@ export default class Task extends ETL {
                         }
                     }
 
-                    if (Number(p.lon) === 0 ||  Number(p.lat) === 0) {
+                    if (Number(activeAlert.lon) === 0 ||  Number(activeAlert.lat) === 0) {
                         continue;
                     }
 
                     fc.features.push({
-                        id: `active911-${p.id}`,
+                        id: `active911-${activeAlert.id}`,
                         type: 'Feature',
                         properties: {
-                            callsign: `${p.description}`,
-                            time: moment(p.send).toISOString(),
+                            callsign: `${activeAlert.description}`,
+                            time: moment(activeAlert.sent).toISOString(),
                             remarks: `
-                                Groups: ${p.units}
-                                Author: ${p.source}
-                                ${p.details}
+                                Groups: ${activeAlert.units}
+                                Author: ${activeAlert.source}
+                                ${activeAlert.details}
                             `
                         },
                         geometry: {
                             type: 'Point',
-                            coordinates: [Number(p.lon), Number(p.lat)]
+                            coordinates: [Number(activeAlert.lon), Number(activeAlert.lat)]
                         }
                     });
                 }
@@ -189,8 +219,7 @@ export default class Task extends ETL {
 
 }
 
-env(import.meta.url)
-await local(new Task(), import.meta.url);
+await local(new Task(import.meta.url), import.meta.url);
 export async function handler(event: Event = {}) {
-    return await internal(new Task(), event);
+    return await internal(new Task(import.meta.url), event);
 }

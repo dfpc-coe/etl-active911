@@ -4,7 +4,7 @@
     "prviate": true,
     "version": "2.9.0",
     "description": "",
-    "main": "index.js",
+    "main": "task.ts",
     "scripts": {
         "lint": "eslint *.ts",
         "build": "tsc --build",
@@ -13,20 +13,17 @@
     "author": "Nick Ingalls <nick@ingalls.ca>",
     "license": "ISC",
     "devDependencies": {
-        "@types/jsonwebtoken": "^9.0.1",
-        "eslint": "^8.31.0",
-        "ts-node": "^10.9.1",
+        "@eslint/js": "^9.17.0",
+        "eslint": "^9.0.0",
         "typescript": "^5.0.4",
-        "typescript-eslint": "^7.7.0"
+        "typescript-eslint": "^8.0.0"
     },
     "dependencies": {
-        "@sinclair/typebox": "^0.32.20",
-        "@tak-ps/etl": "^4.3.0",
-        "@types/geojson": "^7946.0.10",
+        "@sinclair/typebox": "^0.34.0",
+        "@tak-ps/etl": "^6.6.0",
         "@types/tough-cookie": "^4.0.5",
         "csv-parse": "^5.5.3",
         "http-cookie-agent": "^6.0.5",
-        "moment": "^2.30.1",
         "moment-timezone": "^0.5.44",
         "tough-cookie": "^4.1.4"
     }

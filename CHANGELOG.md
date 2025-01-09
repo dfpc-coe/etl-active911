@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v2.10.0
+
+- :tada: Stronger types and fix a couple date issues
+
 ### v2.9.0
 
 - :rocket: Utilize new a911 Cookies for CSV request
