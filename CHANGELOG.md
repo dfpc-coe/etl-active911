@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v2.12.0
+
+- :tada: Add support for dual schema
+
 ### v2.11.0
 
 - :tada: Update to support capabilities response

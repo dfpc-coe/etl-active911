@@ -2,7 +2,7 @@ import { Static, Type, TSchema } from '@sinclair/typebox';
 import { CookieJar } from 'tough-cookie';
 import { CookieAgent } from 'http-cookie-agent/undici';
 import moment from 'moment-timezone';
-import ETL, { Event, SchemaType, handler as internal, local, InputFeatureCollection, InvocationType } from '@tak-ps/etl';
+import ETL, { Event, SchemaType, handler as internal, local, InputFeatureCollection, InvocationType, DataFlowType } from '@tak-ps/etl';
 import { parse } from 'csv-parse/sync'
 
 const Env = Type.Object({
@@ -46,11 +46,18 @@ export default class Task extends ETL {
 
     static invocation = [ InvocationType.Schedule ];
 
-    async schema(type: SchemaType = SchemaType.Input): Promise<TSchema> {
-        if (type === SchemaType.Input) {
-            return Env;
+    async schema(
+        type: SchemaType = SchemaType.Input,
+        flow: DataFlowType = DataFlowType.Incoming
+    ): Promise<TSchema> {
+        if (flow === DataFlowType.Incoming) {
+            if (type === SchemaType.Input) {
+                return Env;
+            } else {
+                return OutputSchema
+            }
         } else {
-            return OutputSchema
+            return Type.Object({});
         }
     }
 
