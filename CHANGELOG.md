@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v2.11.0
+
+- :tada: Update to support capabilities response
+
 ### v2.10.0
 
 - :tada: Stronger types and fix a couple date issues
