@@ -43,7 +43,7 @@ const OutputSchema = Type.Object({
 
 export default class Task extends ETL {
     static name = 'etl-active911'
-
+    static flow = [ DataFlowType.Incoming ];
     static invocation = [ InvocationType.Schedule ];
 
     async schema(

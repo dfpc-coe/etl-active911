@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v2.13.0
+
+- :tada: Add flow and one more etl update
+
 ### v2.12.0
 
 - :tada: Add support for dual schema
