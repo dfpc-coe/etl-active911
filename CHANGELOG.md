@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v3.0.0
+
+- :tada: Update to `CloudTAK@v6`
+
 ### v2.13.0
 
 - :tada: Add flow and one more etl update
