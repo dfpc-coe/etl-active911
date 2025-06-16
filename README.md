@@ -2,6 +2,16 @@
 
 <p align='center'>Bring Active911 Alerts into the TAK System</p>
 
+## Setup
+
+1. Request a Username & Password to the Active911 with a minimum of Read Only permission for Alerts
+2. Manually Log into the account and grab the AgencyID from the URL after you log in
+3. Provide the above information to the ETL Active911 Integration
+
+## Development
+
+<details><summary>Development Information</summary>
+
 ## Configuration
 
 Setting up an Active911 ETL will require the following:
@@ -50,3 +60,5 @@ Github actions will build and push docker releases on every version tag which ca
 CloudTAK API.
 
 Non-DFPC users will need to setup their own docker => ECS build system via something like Github Actions or AWS Codebuild.
+
+</details>
