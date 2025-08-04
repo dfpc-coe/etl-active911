@@ -91,12 +91,13 @@ export default class Task extends ETL {
 
             try {
                 const agencyForm = new FormData();
-                agencyForm.append('operation', 'get_archived_alerts_csv');
+                agencyForm.append('operation', 'get_archived_alerts_spreadsheet');
                 agencyForm.append('auth', token);
                 agencyForm.append('post_data', JSON.stringify({
                     agency_id: agency,
                     from_date: moment().subtract(6, 'hours').unix() * 1000,
-                    to_date:   moment().unix() * 1000
+                    to_date:   moment().unix() * 1000,
+                    file_type: 'Csv'
                 }));
 
                 const alerts_res = await fetch(`https://interface.active911.com/interface/interface.ajax.php?callback=jQuery${+new Date()}`, {
@@ -228,7 +229,7 @@ export default class Task extends ETL {
 
 }
 
-await local(new Task(import.meta.url), import.meta.url);
+await local(await Task.init(import.meta.url), import.meta.url);
 export async function handler(event: Event = {}) {
-    return await internal(new Task(import.meta.url), event);
+    return await internal(await Task.init(import.meta.url), event);
 }

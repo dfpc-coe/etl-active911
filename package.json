@@ -20,11 +20,12 @@
     },
     "dependencies": {
         "@sinclair/typebox": "^0.34.0",
-        "@tak-ps/etl": "^8.0.2",
+        "@tak-ps/etl": "^9.18.0",
         "@types/tough-cookie": "^4.0.5",
-        "csv-parse": "^5.5.3",
-        "http-cookie-agent": "^6.0.5",
-        "moment-timezone": "^0.5.44",
-        "tough-cookie": "^4.1.4"
+        "csv-parse": "^6.1.0",
+        "http-cookie-agent": "^7.0.2",
+        "moment-timezone": "^0.6.0",
+        "tough-cookie": "^5.1.2",
+        "undici": "^7.13.0"
     }
 }

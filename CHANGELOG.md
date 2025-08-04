@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v3.1.0
+
+- :bug: Active Alert changed the export API
+
 ### v3.0.0
 
 - :tada: Update to `CloudTAK@v6`
