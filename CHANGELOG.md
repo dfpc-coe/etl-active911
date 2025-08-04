@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v3.1.1
+
+- :arrow_up: Update ETL Deps
+
 ### v3.1.0
 
 - :bug: Active Alert changed the export API
