@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v3.2.0
+
+- :arrow_up: Update NodeJS Version
+
 ### v3.1.1
 
 - :arrow_up: Update ETL Deps
