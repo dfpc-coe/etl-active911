@@ -87,7 +87,7 @@ export default class Task extends ETL {
         const errs: Error[] = [];
         for (let i = 0; i < filteredAgencies.length; i++) {
             const agency = filteredAgencies[i];
-            console.error(`ok - getting alerts from ${agency}`);
+            console.log(`ok - getting alerts from ${agency}`);
 
             try {
                 const agencyForm = new FormData();
@@ -128,7 +128,7 @@ export default class Task extends ETL {
                     continue;
                 }
 
-                const parsed = parse(alerts.message, { columns: true });
+                const parsed = parse(Buffer.from(alerts.message, 'base64').toString('utf8'), { columns: true });
 
                 for (const p of parsed) {
                      const activeAlert = this.type(OutputSchema, p)
@@ -195,7 +195,7 @@ export default class Task extends ETL {
         token: string;
         agencies: number[];
     }> {
-        console.error('ok - Attempting Login');
+        console.log('ok - Attempting Login');
         const loginForm = new FormData();
         loginForm.append('operation', 'login');
         loginForm.append('post_data', JSON.stringify({

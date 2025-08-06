@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v3.3.0
+
+- :bug: Add Base64 Message Parsing
+
 ### v3.2.0
 
 - :arrow_up: Update NodeJS Version
