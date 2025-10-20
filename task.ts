@@ -2,7 +2,8 @@ import { Static, Type, TSchema } from '@sinclair/typebox';
 import { CookieJar } from 'tough-cookie';
 import { CookieAgent } from 'http-cookie-agent/undici';
 import moment from 'moment-timezone';
-import ETL, { Event, SchemaType, handler as internal, local, InputFeatureCollection, InvocationType, DataFlowType } from '@tak-ps/etl';
+import { Feature } from '@tak-ps/node-cot'
+import ETL, { Event, SchemaType, handler as internal, local, InvocationType, DataFlowType } from '@tak-ps/etl';
 import { parse } from 'csv-parse/sync'
 
 const Env = Type.Object({
@@ -79,7 +80,7 @@ export default class Task extends ETL {
             filteredAgencies.push(...agencies);
         }
 
-        const fc: Static<typeof InputFeatureCollection> = {
+        const fc: Static<typeof Feature.InputFeatureCollection> = {
             type: 'FeatureCollection',
             features: []
         };
