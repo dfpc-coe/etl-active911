@@ -10,6 +10,18 @@
 
 ## Version History
 
+### v3.6.0
+
+- :arrow_up: Update Core Dependencies
+
+### v3.6.0
+
+- :arrow_up: Update Core Dependencies
+
+### v3.6.0
+
+- :arrow_up: Update Core Dependencies
+
 ### v3.5.0
 
 - :rocket: Update Core Deps
