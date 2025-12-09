@@ -20,7 +20,7 @@
     },
     "dependencies": {
         "@sinclair/typebox": "^0.34.0",
-        "@tak-ps/etl": "^9.18.0",
+        "@tak-ps/etl": "^9.26.0",
         "@types/tough-cookie": "^4.0.5",
         "csv-parse": "^6.1.0",
         "http-cookie-agent": "^7.0.2",

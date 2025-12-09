@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v3.7.0
+
+- :tada: Show responders by link relation
+
 ### v3.6.0
 
 - :arrow_up: Update Core Dependencies

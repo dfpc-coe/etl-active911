@@ -85,6 +85,8 @@ export default class Task extends ETL {
             features: []
         };
 
+        const RESPONSE_REGEX = /Got a response of (.+?) to (.+?)\((\d+)\) at (.+?)\./;
+
         const errs: Error[] = [];
         for (let i = 0; i < filteredAgencies.length; i++) {
             const agency = filteredAgencies[i];
@@ -134,40 +136,55 @@ export default class Task extends ETL {
                 for (const p of parsed) {
                      const activeAlert = this.type(OutputSchema, p)
 
-                    if (activeAlert.place.trim().length) {
-                        const coords = activeAlert.place
-                            .trim()
-                            .split(',')
-                            .map((c: string) => { return Number(c) })
-                            .slice(0, 2);
+                     if (Number(activeAlert.lon) === 0 ||  Number(activeAlert.lat) === 0) {
+                         const coords = activeAlert.place
+                         .trim()
+                         .split(',')
+                         .map((c: string) => { return Number(c) })
+                         .slice(0, 2);
 
-                        if (coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
-                            fc.features.push({
-                                id: `active911-${activeAlert.id}-staging`,
-                                type: 'Feature',
-                                properties: {
-                                    callsign: `Staging: ${activeAlert.description}`,
-                                    time: moment(activeAlert.sent).toISOString(),
-                                    remarks: `Groups: ${activeAlert.units}\n Author: ${activeAlert.source}\n ${activeAlert.details}`
-                                },
-                                geometry: {
-                                    type: 'Point',
-                                    coordinates: [coords[1], coords[0]]
-                                }
-                            });
-                        }
-                    }
+                         if (coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
+                             activeAlert.lon = coords[1].toString();
+                             activeAlert.lat = coords[0].toString();
+                         } else {
+                             continue;
+                         }
+                     }
 
-                    if (Number(activeAlert.lon) === 0 ||  Number(activeAlert.lat) === 0) {
-                        continue;
-                    }
+                    const linkMap = new Map<string, {
+                        relation: string;
+                        callsign: string;
+                        remarks: string;
+                        production_time?: string;
+                    }>();
+
+                    // Responses are in Chronological order
+                    activeAlert.responses
+                        .split('\n')
+                        .filter((r) => { return r.startsWith('Got a response of ') })
+                        .map((r) => {
+                            // Example: (Can be in any timezone)
+                            // Got a response of Respond to Nick Ingalls(123456) at 12/08/2025 18:28:20 MST.
+                            const match = RESPONSE_REGEX.exec(r);
+
+                            linkMap.set(match ? match[2].trim() : 'Unknown', {
+                                relation: 't-s',
+                                callsign: match ? match[2].trim() : 'Unknown',
+                                remarks: match ? `Response: ${match[1].trim()}` : 'Response: Unknown',
+                                production_time: match ? moment.tz(match[4].trim(), 'MM/DD/YYYY HH:mm:ss z', 'UTC').toISOString() : undefined
+                            })
+                        });
+
+                    // Date Format: 12/08/2025 18:27:47 MST
+                    const time = moment.tz(activeAlert.sent, 'MM/DD/YYYY HH:mm:ss z', 'UTC').toISOString();
 
                     fc.features.push({
                         id: `active911-${activeAlert.id}`,
                         type: 'Feature',
                         properties: {
                             callsign: `${activeAlert.description}`,
-                            time: moment(activeAlert.sent).toISOString(),
+                            time: time,
+                            links: Array.from(linkMap.values()),
                             remarks: `
                                 Groups: ${activeAlert.units}
                                 Author: ${activeAlert.source}
