@@ -42,6 +42,39 @@ const OutputSchema = Type.Object({
     responses: Type.String(),
 });
 
+const TIMEZONE_MAPPINGS: Record<string, string> = {
+    'EDT': 'America/New_York',
+    'EST': 'America/New_York',
+    'CDT': 'America/Chicago',
+    'CST': 'America/Chicago',
+    'MDT': 'America/Denver',
+    'MST': 'America/Denver',
+    'PDT': 'America/Los_Angeles',
+    'PST': 'America/Los_Angeles',
+    'AKDT': 'America/Anchorage',
+    'AKST': 'America/Anchorage',
+    'HDT': 'Pacific/Honolulu',
+    'HST': 'Pacific/Honolulu',
+    'ADT': 'America/Halifax',
+    'AST': 'America/Halifax',
+    'NDT': 'America/St_Johns',
+    'NST': 'America/St_Johns',
+    'UTC': 'UTC',
+    'GMT': 'Etc/GMT'
+};
+
+function parseTime(timeStr: string): string {
+    const parts = timeStr.trim().split(' ');
+    const tzAbbr = parts[parts.length - 1];
+
+    if (TIMEZONE_MAPPINGS[tzAbbr]) {
+        const datePart = parts.slice(0, -1).join(' ');
+        return moment.tz(datePart, 'MM/DD/YYYY HH:mm:ss', TIMEZONE_MAPPINGS[tzAbbr]).toISOString();
+    }
+
+    return moment.tz(timeStr, 'MM/DD/YYYY HH:mm:ss z', 'UTC').toISOString();
+}
+
 export default class Task extends ETL {
     static name = 'etl-active911'
     static flow = [ DataFlowType.Incoming ];
@@ -170,20 +203,20 @@ export default class Task extends ETL {
                             linkMap.set(match ? match[2].trim() : 'Unknown', {
                                 relation: 't-s',
                                 callsign: match ? match[2].trim() : 'Unknown',
-                                remarks: match ? `Response: ${match[1].trim()}` : 'Response: Unknown',
-                                production_time: match ? moment.tz(match[4].trim(), 'MM/DD/YYYY HH:mm:ss z', 'UTC').toISOString() : undefined
+                                remarks: match ? `${match[1].trim()}` : 'Unknown',
+                                production_time: match ? parseTime(match[4].trim()) : undefined
                             })
                         });
 
                     // Date Format: 12/08/2025 18:27:47 MST
-                    const time = moment.tz(activeAlert.sent, 'MM/DD/YYYY HH:mm:ss z', 'UTC').toISOString();
+                    const start = parseTime(activeAlert.sent);
 
                     fc.features.push({
                         id: `active911-${activeAlert.id}`,
                         type: 'Feature',
                         properties: {
                             callsign: `${activeAlert.description}`,
-                            time: time,
+                            start,
                             links: Array.from(linkMap.values()),
                             remarks: `
                                 Groups: ${activeAlert.units}

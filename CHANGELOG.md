@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v3.8.0
+
+- :rocket: Fix TimeZone parsing to UTC
+
 ### v3.7.0
 
 - :tada: Show responders by link relation
