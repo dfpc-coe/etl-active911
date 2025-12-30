@@ -64,7 +64,7 @@ jobs:
           aws-region: ${{secrets.AWS_STAGING_REGION}}
 
       - name: Login to Amazon ECR (Staging)
-        id: login-ecr
+        id: login-ecr-staging
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Docker Tag ETL - COTAK-Prod
