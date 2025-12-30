@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v3.8.3
+
+- :rocket: Update GH Actions
+
 ### v3.8.2
 
 - :rocket: Update GH Actions
