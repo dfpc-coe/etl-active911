@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v3.8.5
+
+- :rocket: Update GH Actions - Fix ARN for workflow
+
 ### v3.8.4
 
 - :rocket: Update GH Actions
