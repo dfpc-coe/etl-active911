@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v3.8.1
+
+- :rocket: Update GH Actions
+
 ### v3.8.0
 
 - :rocket: Fix TimeZone parsing to UTC
