@@ -40,7 +40,7 @@ jobs:
         run: |
           TAG="${{github.event.repository.name}}-${{steps.tag.outputs.tag}}"
           for env in cotak-prod wftak-prod; do
-            REPO="${{secrets.AWS_ACCOUNT_ID}}.dkr.ecr.${{secrets.AWS_REGION}}.amazonaws.com/tak-vpc-$env"
+            REPO="${{secrets.AWS_ACCOUNT_ID}}.dkr.ecr.${{secrets.AWS_REGION}}.amazonaws.com/tak-vpc-${env}-cloudtak-tasks"
             docker tag etl $REPO:$TAG
             docker push $REPO:$TAG
           done
@@ -60,7 +60,7 @@ jobs:
         run: |
           TAG="${{github.event.repository.name}}-${{steps.tag.outputs.tag}}"
           for env in cotak-staging wftak-staging; do
-            REPO="${{secrets.AWS_STAGING_ACCOUNT_ID}}.dkr.ecr.${{secrets.AWS_STAGING_REGION}}.amazonaws.com/tak-vpc-$env"
+            REPO="${{secrets.AWS_STAGING_ACCOUNT_ID}}.dkr.ecr.${{secrets.AWS_STAGING_REGION}}.amazonaws.com/tak-vpc-${env}-cloudtak-tasks"
             docker tag etl $REPO:$TAG
             docker push $REPO:$TAG
           done
