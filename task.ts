@@ -231,7 +231,7 @@ export default class Task extends ETL {
                     });
                 }
             } catch(err) {
-                errs.push(err);
+                errs.push(err instanceof Error ? err : new Error(String(err)));
             }
         }
 
