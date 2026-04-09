@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v3.9.0
+
+- :arrow_up: Update Core Dependencies
+
 ### v3.8.5
 
 - :rocket: Update GH Actions - Fix ARN for workflow
