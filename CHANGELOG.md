@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v3.15.0
+
+- :rocket: Add default compute
+
 ### v3.14.0
 
 - :rocket: Add Capabilities Document

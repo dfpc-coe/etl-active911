@@ -2,6 +2,10 @@
     "version": "1.0",
     "name": "Active 911",
     "description": "Active 911 is a service that provides real-time emergency dispatch information to first responders. It allows users to receive alerts, view incident details, and access mapping and routing features.",
+    "compute": {
+        "memory": 256,
+        "timeout": 30
+    },
     "permissions": [
         {
             "resource": "feature:*",
