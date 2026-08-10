@@ -1,0 +1,27 @@
+{
+    "version": "1.0",
+    "name": "Active 911",
+    "description": "Active 911 is a service that provides real-time emergency dispatch information to first responders. It allows users to receive alerts, view incident details, and access mapping and routing features.",
+    "permissions": [
+        {
+            "resource": "feature:*",
+            "required": true,
+            "description": "Active911 posts features to the map"
+        },{
+            "resource": "event:*",
+            "required": true,
+            "description": "Active911 posts incidents to the map"
+        }
+    ],
+    "invocations": {
+        "incoming": {
+            "schedule": {
+                "description": "Active911 sends a scheduled request to the app every minute to check for new incidents.",
+                "default": {
+                    "enabled": true,
+                    "schedule": "rate(1 minute)"
+                }
+            }
+        }
+    }
+}
