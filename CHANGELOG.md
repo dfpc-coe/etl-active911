@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v3.16.0
+
+- :arrow_up: Update GH Actions
+
 ### v3.15.0
 
 - :rocket: Add default compute
