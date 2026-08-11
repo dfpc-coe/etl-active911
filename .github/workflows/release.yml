@@ -1,0 +1,26 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Generate CHANGELOG
+        run: |
+          grep -Pzo "### ${{ github.ref_name }}(?s).*?(?=###)" CHANGELOG.md > RELEASE \
+            || echo "See CHANGELOG.md for release notes" > RELEASE
+
+      - name: Github Release
+        uses: softprops/action-gh-release@v3
+        with:
+          body_path: RELEASE
