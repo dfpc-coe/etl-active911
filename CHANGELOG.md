@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v3.19.0
+
+- :bug: Active911 changes their export API
+
 ### v3.18.0
 
 - :arrow_up: Update GH Actions

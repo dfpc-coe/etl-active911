@@ -155,9 +155,9 @@ export default class Task extends ETL {
                 const alerts = JSON.parse(
                     (await alerts_res.text())
                         .trim()
-                        .replace(/^.*?\(/, '')
-                        .replace(/\)$/, '')
-                    )
+                        .replace(/^[^{]+/, '')
+                        .replace(/[^}]+$/, '')
+                );
 
                 if (alerts.result === 'error') {
                     errs.push(new Error(alerts.message));
