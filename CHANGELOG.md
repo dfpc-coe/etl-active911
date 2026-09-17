@@ -10,6 +10,14 @@
 
 ## Version History
 
+### Pending Release
+
+### v4.0.0
+
+- :rocket: Submit alerts as the named `alert` schema to the `/connection/:connection/submit` API instead of the legacy `/layer/:layer/cot` API
+- :rocket: Include the raw Active911 alert as Feature `metadata` so it can be used by Field Mappings
+- :arrow_up: Update `@tak-ps/etl` to `10.20.0`
+
 ### v3.19.0
 
 - :bug: Active911 changes their export API

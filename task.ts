@@ -2,8 +2,8 @@ import { Static, Type, TSchema } from '@sinclair/typebox';
 import { CookieJar } from 'tough-cookie';
 import { CookieAgent } from 'http-cookie-agent/undici';
 import moment from 'moment-timezone';
-import { Feature } from '@tak-ps/node-cot'
-import ETL, { Event, SchemaType, handler as internal, local, InvocationType, DataFlowType } from '@tak-ps/etl';
+import ETL, { Event, SchemaType, handler as internal, local, InvocationType, DataFlowType, SubmitFeatureCollection } from '@tak-ps/etl';
+import type { NamedSchema } from '@tak-ps/etl';
 import { parse } from 'csv-parse/sync'
 
 const Env = Type.Object({
@@ -83,12 +83,12 @@ export default class Task extends ETL {
     async schema(
         type: SchemaType = SchemaType.Input,
         flow: DataFlowType = DataFlowType.Incoming
-    ): Promise<TSchema> {
+    ): Promise<TSchema | Array<NamedSchema>> {
         if (flow === DataFlowType.Incoming) {
             if (type === SchemaType.Input) {
                 return Env;
             } else {
-                return OutputSchema
+                return [{ id: 'alert', schema: OutputSchema }];
             }
         } else {
             return Type.Object({});
@@ -113,8 +113,9 @@ export default class Task extends ETL {
             filteredAgencies.push(...agencies);
         }
 
-        const fc: Static<typeof Feature.InputFeatureCollection> = {
+        const fc: Static<typeof SubmitFeatureCollection> = {
             type: 'FeatureCollection',
+            schema: 'alert',
             features: []
         };
 
@@ -218,6 +219,7 @@ export default class Task extends ETL {
                             callsign: `${activeAlert.description}`,
                             start,
                             links: Array.from(linkMap.values()),
+                            metadata: activeAlert,
                             remarks: `
                                 Groups: ${activeAlert.units}
                                 Author: ${activeAlert.source}
