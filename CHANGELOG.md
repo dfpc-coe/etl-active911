@@ -12,6 +12,11 @@
 
 ### Pending Release
 
+### v4.1.0
+
+- :rocket: Cache the Active911 session (JWT, cookies & agency list) in the Layer ephemeral store and reuse it until it expires instead of logging in on every run - a rejected cached session triggers a single fresh login
+- :bug: A failed login now throws `Active911 Login Failed` instead of continuing with an undefined token
+
 ### v4.0.0
 
 - :rocket: Submit alerts as the named `alert` schema to the `/connection/:connection/submit` API instead of the legacy `/layer/:layer/cot` API

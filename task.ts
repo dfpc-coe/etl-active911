@@ -1,5 +1,6 @@
 import { Static, Type, TSchema } from '@sinclair/typebox';
 import { CookieJar } from 'tough-cookie';
+import type { SerializedCookieJar } from 'tough-cookie';
 import { CookieAgent } from 'http-cookie-agent/undici';
 import moment from 'moment-timezone';
 import ETL, { Event, SchemaType, handler as internal, local, InvocationType, DataFlowType, SubmitFeatureCollection } from '@tak-ps/etl';
@@ -14,6 +15,18 @@ const Env = Type.Object({
     })),
     DEBUG: Type.Boolean({ description: 'Print ADSBX results in logs', default: false })
 });
+
+// Used when the JWT doesn't carry an `exp` claim
+const SESSION_LIFETIME_MS = 60 * 60 * 1000;
+const SESSION_REFRESH_MARGIN_MS = 5 * 60 * 1000;
+
+interface Session {
+    agent: CookieAgent;
+    token: string;
+    agencies: number[];
+    /** Restored from the ephemeral store rather than a fresh login */
+    cached: boolean;
+}
 
 const OutputSchema = Type.Object({
     id: Type.String(),
@@ -98,19 +111,21 @@ export default class Task extends ETL {
     async control(): Promise<void> {
         const env = await this.env(Env);
 
-        const jar = new CookieJar();
-        const agent = new CookieAgent({ cookies: { jar } });
-        const { agencies, token } = await this.controlLogin(agent, env);
+        let session = await this.controlSession(env);
 
         const filteredAgencies: number[] = [];
         if (Array.isArray(env.Agencies) && env.Agencies.length) {
             for (const a of env.Agencies) {
                 const id = parseInt(a.AgencyId);
-                if (!agencies.includes(id)) throw new Error(`Current user account does not provide access to agency: ${id}`);
+
+                // The account may have been given access to the agency since the session was cached
+                if (!session.agencies.includes(id) && session.cached) session = await this.controlSession(env, true);
+
+                if (!session.agencies.includes(id)) throw new Error(`Current user account does not provide access to agency: ${id}`);
                 filteredAgencies.push(id);
             }
         } else {
-            filteredAgencies.push(...agencies);
+            filteredAgencies.push(...session.agencies);
         }
 
         const fc: Static<typeof SubmitFeatureCollection> = {
@@ -127,45 +142,18 @@ export default class Task extends ETL {
             console.log(`ok - getting alerts from ${agency}`);
 
             try {
-                const agencyForm = new FormData();
-                agencyForm.append('operation', 'get_archived_alerts_spreadsheet');
-                agencyForm.append('auth', token);
-                agencyForm.append('post_data', JSON.stringify({
-                    agency_id: agency,
-                    from_date: moment().subtract(6, 'hours').unix() * 1000,
-                    to_date:   moment().unix() * 1000,
-                    file_type: 'Csv'
-                }));
+                let parsed: unknown[];
 
-                const alerts_res = await fetch(`https://interface.active911.com/interface/interface.ajax.php?callback=jQuery${+new Date()}`, {
-                    // @ts-expect-error Not In Fetch Type Def
-                    dispatcher: agent,
-                    headers: {
-                        Origin: 'https://interface.active911.com',
-                    },
-                    referrer: "https://interface.active911.com/interface/",
-                    method: "POST",
-                    body: agencyForm
-                })
+                try {
+                    parsed = await this.controlAlerts(session, agency);
+                } catch (err) {
+                    // A cached session can be revoked before it expires - login again once
+                    if (!session.cached) throw err;
 
-                if (!alerts_res.ok) {
-                    errs.push(new Error(await alerts_res.text()));
-                    continue;
+                    console.log(`ok - cached session rejected: ${err instanceof Error ? err.message : String(err)}`);
+                    session = await this.controlSession(env, true);
+                    parsed = await this.controlAlerts(session, agency);
                 }
-
-                const alerts = JSON.parse(
-                    (await alerts_res.text())
-                        .trim()
-                        .replace(/^[^{]+/, '')
-                        .replace(/[^}]+$/, '')
-                );
-
-                if (alerts.result === 'error') {
-                    errs.push(new Error(alerts.message));
-                    continue;
-                }
-
-                const parsed = parse(Buffer.from(alerts.message, 'base64').toString('utf8'), { columns: true });
 
                 for (const p of parsed) {
                      const activeAlert = this.type(OutputSchema, p)
@@ -244,6 +232,91 @@ export default class Task extends ETL {
         }
     }
 
+    async controlAlerts(session: Session, agency: number): Promise<unknown[]> {
+        const agencyForm = new FormData();
+        agencyForm.append('operation', 'get_archived_alerts_spreadsheet');
+        agencyForm.append('auth', session.token);
+        agencyForm.append('post_data', JSON.stringify({
+            agency_id: agency,
+            from_date: moment().subtract(6, 'hours').unix() * 1000,
+            to_date:   moment().unix() * 1000,
+            file_type: 'Csv'
+        }));
+
+        const alerts_res = await fetch(`https://interface.active911.com/interface/interface.ajax.php?callback=jQuery${+new Date()}`, {
+            // @ts-expect-error Not In Fetch Type Def
+            dispatcher: session.agent,
+            headers: {
+                Origin: 'https://interface.active911.com',
+            },
+            referrer: "https://interface.active911.com/interface/",
+            method: "POST",
+            body: agencyForm
+        })
+
+        if (!alerts_res.ok) throw new Error(await alerts_res.text());
+
+        const alerts = JSON.parse(
+            (await alerts_res.text())
+                .trim()
+                .replace(/^[^{]+/, '')
+                .replace(/[^}]+$/, '')
+        );
+
+        if (alerts.result === 'error') throw new Error(alerts.message);
+
+        return parse(Buffer.from(alerts.message, 'base64').toString('utf8'), { columns: true });
+    }
+
+    /**
+     * Session cached in the ephemeral store of the Layer, falling back to a
+     * login when there isn't one, it has expired or it belongs to another user
+     */
+    async controlSession(env: Static<typeof Env>, force = false): Promise<Session> {
+        const layer = await this.fetchLayer();
+        const ephemeral = layer.incoming?.ephemeral ?? {};
+
+        if (
+            !force
+            && ephemeral.username === env.Username
+            && typeof ephemeral.token === 'string'
+            && Array.isArray(ephemeral.agencies)
+            && Number(ephemeral.expires) > +new Date()
+        ) {
+            try {
+                const jar = CookieJar.deserializeSync(ephemeral.cookies as SerializedCookieJar);
+
+                console.log('ok - using cached session');
+
+                return {
+                    agent: new CookieAgent({ cookies: { jar } }),
+                    token: ephemeral.token,
+                    agencies: ephemeral.agencies.map(Number),
+                    cached: true
+                };
+            } catch (err) {
+                console.error(`not ok - failed to restore cached session: ${err instanceof Error ? err.message : String(err)}`);
+            }
+        }
+
+        const jar = new CookieJar();
+        const agent = new CookieAgent({ cookies: { jar } });
+        const { token, agencies } = await this.controlLogin(agent, env);
+
+        const lifetime = jwtExpires(token) - +new Date();
+        const margin = Math.min(SESSION_REFRESH_MARGIN_MS, lifetime / 2);
+
+        await this.setEphemeral({
+            username: env.Username,
+            token,
+            agencies,
+            cookies: jar.serializeSync(),
+            expires: +new Date() + lifetime - margin
+        });
+
+        return { agent, token, agencies, cached: false };
+    }
+
     async controlLogin(agent: CookieAgent, env: Static<typeof Env>): Promise<{
         token: string;
         agencies: number[];
@@ -266,11 +339,18 @@ export default class Task extends ETL {
             body: loginForm,
         })
 
-        const login = JSON.parse((await login_res.text())
+        const body = JSON.parse((await login_res.text())
             .trim()
             .replace(/^\(/, '')
             .replace(/\)$/, '')
-        ).message
+        );
+
+        const login = body.message;
+
+        // A failed login must never be cached as a session
+        if (body.result === 'error' || !login || typeof login.jwt !== 'string' || !Array.isArray(login.agencies)) {
+            throw new Error(`Active911 Login Failed: ${typeof login === 'string' ? login : 'No token returned'}`);
+        }
 
         return {
             token: login.jwt,
@@ -280,6 +360,18 @@ export default class Task extends ETL {
         };
     }
 
+}
+
+/** Expiry of a JWT in ms from its `exp` claim - a default lifetime from now if it doesn't have one */
+function jwtExpires(token: string): number {
+    try {
+        const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+        if (typeof claims.exp === 'number') return claims.exp * 1000;
+    } catch {
+        // Not a decodable JWT - fall through to the default lifetime
+    }
+
+    return +new Date() + SESSION_LIFETIME_MS;
 }
 
 await local(await Task.init(import.meta.url), import.meta.url);
