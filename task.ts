@@ -24,7 +24,7 @@ const Env = Type.Object({
             default: 'auto'
         })
     })),
-    DEBUG: Type.Boolean({ description: 'Print ADSBX results in logs', default: false })
+    DEBUG: Type.Boolean({ description: 'Print the start of details that were not parsed in logs - CAD notes contain names & medical information', default: false })
 });
 
 // Used when the JWT doesn't carry an `exp` claim
@@ -135,6 +135,7 @@ export default class Task extends ETL {
 
             try {
                 let parsed: unknown[];
+                const parsedBy = new Map<string, number>();
 
                 try {
                     parsed = await this.controlAlerts(session, agency);
@@ -195,6 +196,11 @@ export default class Task extends ETL {
                     // CAD notes aren't timezone aware - they are local to the zone the alert was sent in
                     const zone = parseZone(activeAlert.sent);
                     const narrative = parseNarrative(activeAlert.details, zone, parsers.get(agency));
+                    parsedBy.set(narrative.parser, (parsedBy.get(narrative.parser) || 0) + 1);
+
+                    if (env.DEBUG && narrative.parser === 'raw' && activeAlert.details.trim()) {
+                        console.log(`ok - alert ${activeAlert.id} not parsed: ${escaped(activeAlert.details.slice(0, 80))}`);
+                    }
 
                     fc.features.push({
                         id: `active911-${activeAlert.id}`,
@@ -215,6 +221,9 @@ export default class Task extends ETL {
                         }
                     });
                 }
+
+                // Shows if remarks that aren't a table came from here or from a remarks template in the Layer styles
+                console.log(`ok - ${agency} parsers: ${JSON.stringify(Object.fromEntries(parsedBy))}`);
             } catch(err) {
                 errs.push(err instanceof Error ? err : new Error(String(err)));
             }
@@ -361,6 +370,13 @@ export default class Task extends ETL {
  */
 function cookieAgent(jar: CookieJar): CookieAgent {
     return new CookieAgent({ cookies: { jar: jar as unknown as CookieOptions['jar'] } });
+}
+
+/** Printable ASCII with everything else as a code point so that whitespace Active911 has substituted can be seen */
+function escaped(text: string): string {
+    return Array.from(text).map((c) => {
+        return /[\x20-\x7e]/.test(c) ? c : `\\u{${c.codePointAt(0)!.toString(16)}}`;
+    }).join('');
 }
 
 /** Expiry of a JWT in ms from its `exp` claim - a default lifetime from now if it doesn't have one */

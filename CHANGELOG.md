@@ -12,6 +12,14 @@
 
 ### Pending Release
 
+### v4.5.0
+
+- :bug: `spillman`: a `Dispatch:` inside of a note - Active911 writes a `-` as `: ` - was taken for the closing `Dispatch:` trailer, dropping every note after it. Only the last `Dispatch:` with no note after it that is closed by a `|` or on its own line is the trailer
+- :bug: `spillman`: timestamps are matched with any horizontal whitespace between their parts - a non-breaking space or tab in place of a space left the details unparsed
+- :rocket: Log the number of alerts that each parser handled per agency - remarks that aren't a table while the log reports a parser other than `raw` come from a `remarks` template in the Layer styles, which replaces the remarks of the ETL
+- :rocket: `DEBUG` logs the first 80 characters of details that weren't parsed with everything outside of printable ASCII shown as a code point
+- :white_check_mark: `spillman`: notes are split the same with or without line breaks between them
+
 ### v4.4.0
 
 - :rocket: Bump Version

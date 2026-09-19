@@ -61,6 +61,66 @@ test('spillman: auto detected', () => {
     });
 });
 
+test('spillman: notes are split with or without line breaks between them', () => {
+    const notes = ['15 54 54 09 18 2026 :  Jane Doe first', '15 55 57 09 18 2026 :  Jane Doe second', 'Dispatch: New Call from Spillman at Dispatch|'];
+
+    for (const separator of ['\n', '\r\n', ' ', '  ']) {
+        const narrative = parseNarrative(notes.join(separator), ZONE);
+
+        assert.deepEqual(narrative.entries.map((e) => e.text), ['Jane Doe first', 'Jane Doe second']);
+        assert.deepEqual(narrative.fields, { Dispatch: 'New Call from Spillman at Dispatch' });
+    }
+});
+
+test('spillman: Dispatch: inside of a note is not the trailer', () => {
+    const narrative = parseNarrative('15 54 54 09 18 2026 :  Jane Doe Dispatch: advised to stage 15 55 57 09 18 2026 :  Jane Doe second Dispatch: New Call from Spillman at Dispatch|', ZONE);
+
+    assert.deepEqual(narrative.entries.map((e) => e.text), ['Jane Doe Dispatch: advised to stage', 'Jane Doe second']);
+    assert.deepEqual(narrative.fields, { Dispatch: 'New Call from Spillman at Dispatch' });
+});
+
+test('spillman: Dispatch: inside of a note when the trailer was truncated away', () => {
+    for (const details of [
+        '15 54 54 09 18 2026 :  Jane Doe Dispatch: advised to stage 15 55 57 09 18 2026 :  Jane Doe second no',
+        '15 54 54 09 18 2026 :  Jane Doe Dispatch: advised to sta'
+    ]) {
+        const narrative = parseNarrative(details, ZONE);
+
+        assert.equal(narrative.entries[0].text.startsWith('Jane Doe Dispatch: advised to sta'), true);
+        assert.deepEqual(narrative.fields, {});
+    }
+});
+
+test('spillman: two notes truncated inside of the last with the trailer on its own line', () => {
+    assert.deepEqual(parseNarrative('07 23 46 09 19 2026 :  Jane Doe medical alarm 07 25 17 09 19 2026 :  Jane Doe (ProQA Medical) Chief Complaint Falls Age unknown, Female, Conscious, Breathing. Caller Statement medical alarm wife fell is bleedi\nDispatch: New Call from Spillman at Dispatch|', ZONE), {
+        parser: 'spillman',
+        entries: [
+            { time: '2026-09-19T13:23:46.000Z', text: 'Jane Doe medical alarm' },
+            { time: '2026-09-19T13:25:17.000Z', text: 'Jane Doe (ProQA Medical) Chief Complaint Falls Age unknown, Female, Conscious, Breathing. Caller Statement medical alarm wife fell is bleedi' }
+        ],
+        fields: { Dispatch: 'New Call from Spillman at Dispatch' }
+    });
+});
+
+test('spillman: whitespace other than a single space inside of a timestamp', () => {
+    for (const gap of ['\u00a0', '  ', '\t', '\u2009']) {
+        const stamp = (time: string): string => time.replaceAll(' ', gap);
+        const narrative = parseNarrative(`\ufeff${stamp('15 54 54 09 18 2026 :')}${gap}${gap}Jane Doe first ${stamp('15 55 57 09 18 2026 :')}${gap}Jane Doe second\r\nDispatch: New Call from Spillman at Dispatch|`, ZONE);
+
+        assert.equal(narrative.parser, 'spillman');
+        assert.deepEqual(narrative.entries, [
+            { time: '2026-09-18T21:54:54.000Z', text: 'Jane Doe first' },
+            { time: '2026-09-18T21:55:57.000Z', text: 'Jane Doe second' }
+        ]);
+    }
+});
+
+test('spillman: a timestamp without a space before the colon', () => {
+    const narrative = parseNarrative('15 54 54 09 18 2026: Jane Doe first 15 55 57 09 18 2026: Jane Doe second', ZONE);
+
+    assert.deepEqual(narrative.entries.map((e) => e.text), ['Jane Doe first', 'Jane Doe second']);
+});
+
 test('spillman: truncated inside of a timestamp', () => {
     const narrative = parseNarrative('15 54 54 09 18 2026 :  Jane Doe first note 15 55 57 09', ZONE);
 

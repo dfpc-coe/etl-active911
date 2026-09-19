@@ -1,10 +1,35 @@
 import moment from 'moment-timezone';
 import type { DetailParser, NarrativeEntry, ParsedDetails } from './types.js';
 
-const SIGNATURE = /^\s*\d{2} \d{2} \d{2} \d{2} \d{2} \d{4} :/;
-const DETAILS = /^(.*?)(?:\s*Dispatch:\s*(.*?)\|?)?\s*$/s;
-const NOTE_BOUNDARY = /\s+(?=\d{2} \d{2} \d{2} \d{2} \d{2} \d{4} :)/;
-const NOTE = /^(\d{2}) (\d{2}) (\d{2}) (\d{2}) (\d{2}) (\d{4}) :\s*(.*)$/s;
+// Active911 isn't consistent about the whitespace it writes - a non-breaking space must not defeat detection
+const GAP = '[^\\S\\r\\n]+';
+const STAMP_SOURCE = ['\\d{2}', '\\d{2}', '\\d{2}', '\\d{2}', '\\d{2}', '\\d{4}'].join(GAP) + `(?:${GAP})?:`;
+const STAMP_GROUPS = ['(\\d{2})', '(\\d{2})', '(\\d{2})', '(\\d{2})', '(\\d{2})', '(\\d{4})'].join(GAP) + `(?:${GAP})?:`;
+
+const SIGNATURE = new RegExp(`^\\s*${STAMP_SOURCE}`);
+const TRAILER = 'Dispatch:';
+const STAMP = new RegExp(STAMP_SOURCE);
+const NOTE_BOUNDARY = new RegExp(`\\s+(?=${STAMP_SOURCE})`);
+const NOTE = new RegExp(`^${STAMP_GROUPS}\\s*(.*)$`, 's');
+
+/**
+ * Split the closing `Dispatch: ...|` from the notes
+ *
+ * Active911 writes a `-` as `: ` so `Dispatch:` also turns up inside of notes. Only the last one can be
+ * the trailer, and only when no note follows it and it is closed by a `|` or on a line of its own -
+ * details that were truncated before the trailer would otherwise lose the end of their last note to it
+ */
+function trailer(details: string): { body: string; dispatch?: string } {
+    const at = details.lastIndexOf(TRAILER);
+    if (at === -1) return { body: details };
+
+    const tail = details.slice(at + TRAILER.length).trim();
+    const closed = tail.endsWith('|') || /\n[ \t]*$/.test(details.slice(0, at));
+
+    if (STAMP.test(tail) || !closed) return { body: details };
+
+    return { body: details.slice(0, at), dispatch: tail.replace(/\|$/, '').trim() };
+}
 
 /**
  * Spillman (Motorola Flex) - each note is prefixed with `HH mm ss MM DD YYYY :`
@@ -22,10 +47,7 @@ const parser: DetailParser = {
     },
 
     parse(details: string, zone: string): ParsedDetails {
-        const match = DETAILS.exec(details);
-        if (!match) return { entries: [{ text: details.trim() }], fields: {} };
-
-        const [, body, dispatch] = match;
+        const { body, dispatch } = trailer(details);
 
         const entries: NarrativeEntry[] = body.trim().split(NOTE_BOUNDARY).map((raw) => {
             const note = NOTE.exec(raw.trim());
@@ -40,7 +62,7 @@ const parser: DetailParser = {
 
         return {
             entries,
-            fields: dispatch ? { Dispatch: dispatch.trim() } : {}
+            fields: dispatch ? { Dispatch: dispatch } : {}
         };
     }
 };
