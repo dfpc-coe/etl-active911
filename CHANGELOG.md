@@ -12,6 +12,10 @@
 
 ### Pending Release
 
+### v4.4.0
+
+- :rocket: Bump Version
+
 ### v4.3.0
 
 - :rocket: Bump Version
