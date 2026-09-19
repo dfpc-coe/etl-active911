@@ -12,6 +12,10 @@
 
 ### Pending Release
 
+### v4.3.0
+
+- :rocket: Bump Version
+
 ### v4.2.0
 
 - :tada: Parse the free text `details` of an alert into individual CAD notes - `spillman` & `dated-dash` formats are detected automatically or can be set per agency with the new `Parser` option, details in an unknown format are left as is
