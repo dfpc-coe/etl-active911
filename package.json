@@ -6,9 +6,9 @@
     "description": "",
     "main": "task.ts",
     "scripts": {
-        "lint": "eslint *.ts",
+        "lint": "eslint *.ts lib test",
         "build": "tsc --build",
-        "test": "exit 0"
+        "test": "tsx --test test/*.test.ts"
     },
     "author": "Nick Ingalls <nick@ingalls.ca>",
     "license": "ISC",
@@ -17,7 +17,8 @@
     },
     "devDependencies": {
         "@eslint/js": "^10.0.0",
-        "eslint": "^10.0.0",
+        "eslint": "^10.11.0",
+        "tsx": "^4.23.13",
         "typescript": "^6.0.0",
         "typescript-eslint": "^8.58.1"
     },
@@ -26,9 +27,9 @@
         "@tak-ps/etl": "^10.20.0",
         "@types/tough-cookie": "^4.0.5",
         "csv-parse": "^7.0.0",
-        "http-cookie-agent": "^7.0.2",
+        "http-cookie-agent": "^8.0.0",
         "moment-timezone": "^0.6.0",
-        "tough-cookie": "^5.1.2",
-        "undici": "^7.13.0"
+        "tough-cookie": "^6.0.2",
+        "undici": "^8.10.2"
     }
 }

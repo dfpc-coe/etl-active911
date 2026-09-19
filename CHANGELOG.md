@@ -12,6 +12,15 @@
 
 ### Pending Release
 
+### v4.2.0
+
+- :tada: Parse the free text `details` of an alert into individual CAD notes - `spillman` & `dated-dash` formats are detected automatically or can be set per agency with the new `Parser` option, details in an unknown format are left as is
+- :tada: Remarks are now Markdown with CAD notes rendered as a `Time | Author | Note` table - empty `Groups`/`Author` values are omitted and the template indentation is gone
+- :rocket: Include the parsed notes as `metadata.narrative` so they can be used by Field Mappings
+- :white_check_mark: Add parser tests & run them in the `Test` GitHub workflow
+- :arrow_up: Update `undici` to `8`, `http-cookie-agent` to `8`, `tough-cookie` to `6` & `eslint` to `10.11`
+- :bug: Use the `fetch` & `FormData` of `undici` for Active911 requests - the dispatcher of `undici@8` hangs the `fetch` built into Node 24
+
 ### v4.1.0
 
 - :rocket: Cache the Active911 session (JWT, cookies & agency list) in the Layer ephemeral store and reuse it until it expires instead of logging in on every run - a rejected cached session triggers a single fresh login

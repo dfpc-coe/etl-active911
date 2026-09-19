@@ -8,6 +8,23 @@
 2. Manually Log into the account and grab the AgencyID from the URL after you log in
 3. Provide the above information to the ETL Active911 Integration
 
+## CAD Notes
+
+The free text details of an alert are formatted differently by every CAD vendor. Known formats are parsed into
+individual notes which are rendered as a Markdown table in the remarks and included as `metadata.narrative`.
+
+Each agency has a `Parser` option:
+
+| Parser | Details |
+| --- | --- |
+| `auto` | Default - detect the format, falling back to `raw` |
+| `raw` | Leave the details as is |
+| `spillman` | Spillman/Flex - `HH mm ss MM DD YYYY :  text` notes with a `Dispatch:` trailer |
+| `dated-dash` | A single leading date followed by `HH:mm:ss user - text` notes with a `TIME:` trailer |
+
+To support a new format add a parser to `lib/parsers/`, register it in `lib/parsers/index.ts` and add a scrubbed
+sample of the details to `test/parsers.test.ts` - CAD notes routinely contain names & medical information.
+
 ## Development
 
 <details><summary>Development Information</summary>

@@ -1,17 +1,28 @@
 import { Static, Type, TSchema } from '@sinclair/typebox';
 import { CookieJar } from 'tough-cookie';
 import type { SerializedCookieJar } from 'tough-cookie';
+// The dispatcher of undici@8 can't be given to the fetch that is built into Node 24 (undici@7) - the request never
+// completes. FormData has to come from undici as well or its fetch sends it as the text `[object FormData]`
+import { fetch, FormData } from 'undici';
 import { CookieAgent } from 'http-cookie-agent/undici';
+import type { CookieOptions } from 'http-cookie-agent/undici';
 import moment from 'moment-timezone';
 import ETL, { Event, SchemaType, handler as internal, local, InvocationType, DataFlowType, SubmitFeatureCollection } from '@tak-ps/etl';
 import type { NamedSchema } from '@tak-ps/etl';
 import { parse } from 'csv-parse/sync'
+import { parseTime, parseZone } from './lib/time.js';
+import { PARSER_NAMES, parseNarrative, renderRemarks } from './lib/parsers/index.js';
 
 const Env = Type.Object({
     Username: Type.String({ description: 'Active911 Username' }),
     Password: Type.String({ description: 'Active911 Password' }),
     Agencies: Type.Array(Type.Object({
-        AgencyId: Type.String()
+        AgencyId: Type.String(),
+        Parser: Type.String({
+            description: 'CAD format used to parse alert details into individual notes - auto detects the format & raw leaves the details as is',
+            enum: PARSER_NAMES,
+            default: 'auto'
+        })
     })),
     DEBUG: Type.Boolean({ description: 'Print ADSBX results in logs', default: false })
 });
@@ -28,7 +39,7 @@ interface Session {
     cached: boolean;
 }
 
-const OutputSchema = Type.Object({
+const AlertSchema = Type.Object({
     id: Type.String(),
     received: Type.String(),
     sent: Type.String(),
@@ -55,38 +66,17 @@ const OutputSchema = Type.Object({
     responses: Type.String(),
 });
 
-const TIMEZONE_MAPPINGS: Record<string, string> = {
-    'EDT': 'America/New_York',
-    'EST': 'America/New_York',
-    'CDT': 'America/Chicago',
-    'CST': 'America/Chicago',
-    'MDT': 'America/Denver',
-    'MST': 'America/Denver',
-    'PDT': 'America/Los_Angeles',
-    'PST': 'America/Los_Angeles',
-    'AKDT': 'America/Anchorage',
-    'AKST': 'America/Anchorage',
-    'HDT': 'Pacific/Honolulu',
-    'HST': 'Pacific/Honolulu',
-    'ADT': 'America/Halifax',
-    'AST': 'America/Halifax',
-    'NDT': 'America/St_Johns',
-    'NST': 'America/St_Johns',
-    'UTC': 'UTC',
-    'GMT': 'Etc/GMT'
-};
-
-function parseTime(timeStr: string): string {
-    const parts = timeStr.trim().split(' ');
-    const tzAbbr = parts[parts.length - 1];
-
-    if (TIMEZONE_MAPPINGS[tzAbbr]) {
-        const datePart = parts.slice(0, -1).join(' ');
-        return moment.tz(datePart, 'MM/DD/YYYY HH:mm:ss', TIMEZONE_MAPPINGS[tzAbbr]).toISOString();
-    }
-
-    return moment.tz(timeStr, 'MM/DD/YYYY HH:mm:ss z', 'UTC').toISOString();
-}
+const OutputSchema = Type.Composite([AlertSchema, Type.Object({
+    narrative: Type.Object({
+        parser: Type.String({ description: 'Parser that produced the narrative - raw if the details were not parsed' }),
+        entries: Type.Array(Type.Object({
+            time: Type.Optional(Type.String()),
+            author: Type.Optional(Type.String()),
+            text: Type.String()
+        })),
+        fields: Type.Record(Type.String(), Type.String())
+    })
+})]);
 
 export default class Task extends ETL {
     static name = 'etl-active911'
@@ -114,6 +104,7 @@ export default class Task extends ETL {
         let session = await this.controlSession(env);
 
         const filteredAgencies: number[] = [];
+        const parsers = new Map<number, string>();
         if (Array.isArray(env.Agencies) && env.Agencies.length) {
             for (const a of env.Agencies) {
                 const id = parseInt(a.AgencyId);
@@ -123,6 +114,7 @@ export default class Task extends ETL {
 
                 if (!session.agencies.includes(id)) throw new Error(`Current user account does not provide access to agency: ${id}`);
                 filteredAgencies.push(id);
+                parsers.set(id, a.Parser || 'auto');
             }
         } else {
             filteredAgencies.push(...session.agencies);
@@ -156,7 +148,7 @@ export default class Task extends ETL {
                 }
 
                 for (const p of parsed) {
-                     const activeAlert = this.type(OutputSchema, p)
+                     const activeAlert = this.type(AlertSchema, p)
 
                      if (Number(activeAlert.lon) === 0 ||  Number(activeAlert.lat) === 0) {
                          const coords = activeAlert.place
@@ -200,6 +192,10 @@ export default class Task extends ETL {
                     // Date Format: 12/08/2025 18:27:47 MST
                     const start = parseTime(activeAlert.sent);
 
+                    // CAD notes aren't timezone aware - they are local to the zone the alert was sent in
+                    const zone = parseZone(activeAlert.sent);
+                    const narrative = parseNarrative(activeAlert.details, zone, parsers.get(agency));
+
                     fc.features.push({
                         id: `active911-${activeAlert.id}`,
                         type: 'Feature',
@@ -207,12 +203,11 @@ export default class Task extends ETL {
                             callsign: `${activeAlert.description}`,
                             start,
                             links: Array.from(linkMap.values()),
-                            metadata: activeAlert,
-                            remarks: `
-                                Groups: ${activeAlert.units}
-                                Author: ${activeAlert.source}
-                                ${activeAlert.details}
-                            `
+                            metadata: { ...activeAlert, narrative },
+                            remarks: renderRemarks({
+                                Groups: activeAlert.units,
+                                Author: activeAlert.source
+                            }, narrative, zone)
                         },
                         geometry: {
                             type: 'Point',
@@ -244,7 +239,6 @@ export default class Task extends ETL {
         }));
 
         const alerts_res = await fetch(`https://interface.active911.com/interface/interface.ajax.php?callback=jQuery${+new Date()}`, {
-            // @ts-expect-error Not In Fetch Type Def
             dispatcher: session.agent,
             headers: {
                 Origin: 'https://interface.active911.com',
@@ -289,7 +283,7 @@ export default class Task extends ETL {
                 console.log('ok - using cached session');
 
                 return {
-                    agent: new CookieAgent({ cookies: { jar } }),
+                    agent: cookieAgent(jar),
                     token: ephemeral.token,
                     agencies: ephemeral.agencies.map(Number),
                     cached: true
@@ -300,7 +294,7 @@ export default class Task extends ETL {
         }
 
         const jar = new CookieJar();
-        const agent = new CookieAgent({ cookies: { jar } });
+        const agent = cookieAgent(jar);
         const { token, agencies } = await this.controlLogin(agent, env);
 
         const lifetime = jwtExpires(token) - +new Date();
@@ -332,7 +326,6 @@ export default class Task extends ETL {
         }));
 
         const login_res = await fetch("https://interface.active911.com/interface/interface.ajax.php", {
-            // @ts-expect-error Not In Fetch Type Def
             dispatcher: agent,
             referrer: "https://interface.active911.com/interface/",
             method: 'POST',
@@ -360,6 +353,14 @@ export default class Task extends ETL {
         };
     }
 
+}
+
+/**
+ * http-cookie-agent is CommonJS so its types resolve the CJS declarations of tough-cookie
+ * which TypeScript treats as distinct from the identical ESM declarations imported here
+ */
+function cookieAgent(jar: CookieJar): CookieAgent {
+    return new CookieAgent({ cookies: { jar: jar as unknown as CookieOptions['jar'] } });
 }
 
 /** Expiry of a JWT in ms from its `exp` claim - a default lifetime from now if it doesn't have one */
