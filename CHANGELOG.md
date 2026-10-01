@@ -12,6 +12,10 @@
 
 ### Pending Release
 
+### v4.5.2
+
+- :rocket: Update `capabilities.json` to format version `1.1` - disables Legacy Styling and enforces the Layer Field Mapping UI
+
 ### v4.5.1
 
 - :arrow_up: Update `@tak-ps/etl`
