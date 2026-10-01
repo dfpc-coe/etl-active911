@@ -12,6 +12,10 @@
 
 ### Pending Release
 
+### v4.5.1
+
+- :arrow_up: Update `@tak-ps/etl`
+
 ### v4.5.0
 
 - :bug: `spillman`: a `Dispatch:` inside of a note - Active911 writes a `-` as `: ` - was taken for the closing `Dispatch:` trailer, dropping every note after it. Only the last `Dispatch:` with no note after it that is closed by a `|` or on its own line is the trailer
