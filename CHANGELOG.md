@@ -12,6 +12,10 @@
 
 ### Pending Release
 
+### v4.6.1
+
+- :rocket: Add Event Sync
+
 ### v4.6.0
 
 - :tada: Alerts are written directly to CloudTAK Events via the `@tak-ps/etl` SDK instead of being submitted as CoT - one Event per alert filed under the `active911` external ID, with the responders of each alert reconciled as Event Assignments (response as the role)
