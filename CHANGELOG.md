@@ -12,7 +12,7 @@
 
 ### Pending Release
 
-### v4.6.2
+### v4.7.0
 
 - :rocket: Simplify Event Sync & Let CloudTAK autoend events on expiry since Active911 never closes them
 
