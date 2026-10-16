@@ -1,20 +1,46 @@
 {
     "version": "1.1",
     "name": "Active 911",
-    "description": "Active 911 is a service that provides real-time emergency dispatch information to first responders. It allows users to receive alerts, view incident details, and access mapping and routing features.",
+    "description": "Active 911 is a service that provides real-time emergency dispatch information to first responders. Alerts are written to CloudTAK Events with the responders of each alert as Assignments.",
     "compute": {
         "memory": 256,
         "timeout": 30
     },
     "permissions": [
         {
-            "resource": "feature:*",
+            "resource": "event:create",
             "required": true,
-            "description": "Active911 posts features to the map"
-        },{
-            "resource": "event:*",
+            "description": "Active911 creates an Event for every alert"
+        },
+        {
+            "resource": "event:read",
             "required": true,
-            "description": "Active911 posts incidents to the map"
+            "description": "Active911 indexes the Events it previously created when its cache has no record of an alert"
+        },
+        {
+            "resource": "event:update",
+            "required": true,
+            "description": "Active911 updates Events as alerts change and ends them once an alert leaves the archive window"
+        },
+        {
+            "resource": "assignment:create",
+            "required": true,
+            "description": "Active911 assigns the responders of an alert to its Event"
+        },
+        {
+            "resource": "assignment:read",
+            "required": true,
+            "description": "Active911 reads the Assignments of an Event to reconcile them with the current responses"
+        },
+        {
+            "resource": "assignment:update",
+            "required": true,
+            "description": "Active911 updates the role of a responder as their response changes"
+        },
+        {
+            "resource": "assignment:delete",
+            "required": true,
+            "description": "Active911 removes responders whose response was withdrawn"
         }
     ],
     "invocations": {

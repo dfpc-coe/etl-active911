@@ -7,11 +7,13 @@ import { fetch, FormData } from 'undici';
 import { CookieAgent } from 'http-cookie-agent/undici';
 import type { CookieOptions } from 'http-cookie-agent/undici';
 import moment from 'moment-timezone';
-import ETL, { Event, SchemaType, handler as internal, local, InvocationType, DataFlowType, SubmitFeatureCollection } from '@tak-ps/etl';
+import ETL, { Event, SchemaType, handler as internal, local, InvocationType, DataFlowType } from '@tak-ps/etl';
 import type { NamedSchema } from '@tak-ps/etl';
 import { parse } from 'csv-parse/sync'
 import { parseTime, parseZone } from './lib/time.js';
 import { PARSER_NAMES, parseNarrative, renderRemarks } from './lib/parsers/index.js';
+import { EventCache, EventSync, clampName, expiresAfter, priorityOf } from './lib/events.js';
+import type { Assignee } from './lib/events.js';
 
 const Env = Type.Object({
     Username: Type.String({ description: 'Active911 Username' }),
@@ -24,12 +26,30 @@ const Env = Type.Object({
             default: 'auto'
         })
     })),
+    ActiveHours: Type.Number({
+        default: 6,
+        minimum: 0.25,
+        description: 'Hours after an alert is sent that its Event stays active - Active911 never closes an alert so this alone takes it off the map'
+    }),
     DEBUG: Type.Boolean({ description: 'Print the start of details that were not parsed in logs - CAD notes contain names & medical information', default: false })
 });
 
 // Used when the JWT doesn't carry an `exp` claim
 const SESSION_LIFETIME_MS = 60 * 60 * 1000;
 const SESSION_REFRESH_MARGIN_MS = 5 * 60 * 1000;
+
+/** External ID system alert IDs are filed under on CloudTAK Events */
+const EXTERNAL_SYSTEM = 'active911';
+
+/** MIL-STD-2525E Incident symbol - the CloudTAK default for a new Event */
+const EVENT_SIDC = '10034000001100000000';
+
+/** Marks the Assignments this task manages so people added by users are left alone */
+const ASSIGNMENT_REMARKS = 'Active911 Response';
+
+// Example: (Can be in any timezone)
+// Got a response of Respond to Nick Ingalls(123456) at 12/08/2025 18:28:20 MST.
+const RESPONSE_REGEX = /Got a response of (.+?) to (.+?)\((\d+)\) at (.+?)\./;
 
 interface Session {
     agent: CookieAgent;
@@ -78,6 +98,34 @@ const OutputSchema = Type.Composite([AlertSchema, Type.Object({
     })
 })]);
 
+/**
+ * Responses are in chronological order - the latest response of each person wins
+ */
+export function responders(responses: string): Array<Assignee> {
+    const byName = new Map<string, Assignee>();
+
+    for (const line of responses.split('\n')) {
+        if (!line.startsWith('Got a response of ')) continue;
+
+        const match = RESPONSE_REGEX.exec(line);
+        const name = clampName(match ? match[2].trim() : 'Unknown');
+
+        byName.set(name, {
+            name,
+            role: match ? match[1].trim() : 'Unknown'
+        });
+    }
+
+    return [...byName.values()];
+}
+
+function location(alert: Static<typeof AlertSchema>): string {
+    return [alert.address, alert.city, alert.state]
+        .map((part) => part.trim())
+        .filter((part) => part.length)
+        .join(', ');
+}
+
 export default class Task extends ETL {
     static name = 'etl-active911'
     static flow = [ DataFlowType.Incoming ];
@@ -120,13 +168,10 @@ export default class Task extends ETL {
             filteredAgencies.push(...session.agencies);
         }
 
-        const fc: Static<typeof SubmitFeatureCollection> = {
-            type: 'FeatureCollection',
-            schema: 'alert',
-            features: []
-        };
-
-        const RESPONSE_REGEX = /Got a response of (.+?) to (.+?)\((\d+)\) at (.+?)\./;
+        const sync = new EventSync(this.api, await this.eventCache(), {
+            system: EXTERNAL_SYSTEM,
+            marker: ASSIGNMENT_REMARKS
+        });
 
         const errs: Error[] = [];
         for (let i = 0; i < filteredAgencies.length; i++) {
@@ -138,14 +183,14 @@ export default class Task extends ETL {
                 const parsedBy = new Map<string, number>();
 
                 try {
-                    parsed = await this.controlAlerts(session, agency);
+                    parsed = await this.controlAlerts(session, agency, env.ActiveHours);
                 } catch (err) {
                     // A cached session can be revoked before it expires - login again once
                     if (!session.cached) throw err;
 
                     console.log(`ok - cached session rejected: ${err instanceof Error ? err.message : String(err)}`);
                     session = await this.controlSession(env, true);
-                    parsed = await this.controlAlerts(session, agency);
+                    parsed = await this.controlAlerts(session, agency, env.ActiveHours);
                 }
 
                 for (const p of parsed) {
@@ -166,32 +211,12 @@ export default class Task extends ETL {
                          }
                      }
 
-                    const linkMap = new Map<string, {
-                        relation: string;
-                        callsign: string;
-                        remarks: string;
-                        production_time?: string;
-                    }>();
-
-                    // Responses are in Chronological order
-                    activeAlert.responses
-                        .split('\n')
-                        .filter((r) => { return r.startsWith('Got a response of ') })
-                        .map((r) => {
-                            // Example: (Can be in any timezone)
-                            // Got a response of Respond to Nick Ingalls(123456) at 12/08/2025 18:28:20 MST.
-                            const match = RESPONSE_REGEX.exec(r);
-
-                            linkMap.set(match ? match[2].trim() : 'Unknown', {
-                                relation: 't-s',
-                                callsign: match ? match[2].trim() : 'Unknown',
-                                remarks: match ? `${match[1].trim()}` : 'Unknown',
-                                production_time: match ? parseTime(match[4].trim()) : undefined
-                            })
-                        });
-
                     // Date Format: 12/08/2025 18:27:47 MST
                     const start = parseTime(activeAlert.sent);
+                    const started = start && !Number.isNaN(new Date(start).getTime()) ? start : undefined;
+
+                    const ended = expiresAfter(env.ActiveHours, started, sync.cache[activeAlert.id]);
+                    if (new Date(ended).getTime() <= Date.now()) continue;
 
                     // CAD notes aren't timezone aware - they are local to the zone the alert was sent in
                     const zone = parseZone(activeAlert.sent);
@@ -202,23 +227,26 @@ export default class Task extends ETL {
                         console.log(`ok - alert ${activeAlert.id} not parsed: ${escaped(activeAlert.details.slice(0, 80))}`);
                     }
 
-                    fc.features.push({
-                        id: `active911-${activeAlert.id}`,
-                        type: 'Feature',
-                        properties: {
-                            callsign: `${activeAlert.description}`,
-                            start,
-                            links: Array.from(linkMap.values()),
-                            metadata: { ...activeAlert, narrative },
+                    await sync.sync({
+                        external: activeAlert.id,
+                        ended,
+                        event: {
+                            name: clampName(activeAlert.description.trim() || `Alert ${activeAlert.id}`),
+                            type: EVENT_SIDC,
+                            priority: priorityOf(activeAlert.priority),
+                            geometry: {
+                                type: 'Point',
+                                coordinates: [Number(activeAlert.lon), Number(activeAlert.lat)]
+                            },
+                            location: location(activeAlert),
+                            started,
                             remarks: renderRemarks({
                                 Groups: activeAlert.units,
                                 Author: activeAlert.source
-                            }, narrative, zone)
+                            }, narrative, zone),
+                            metadata: { ...activeAlert, narrative }
                         },
-                        geometry: {
-                            type: 'Point',
-                            coordinates: [Number(activeAlert.lon), Number(activeAlert.lat)]
-                        }
+                        assignees: responders(activeAlert.responses)
                     });
                 }
 
@@ -229,20 +257,48 @@ export default class Task extends ETL {
             }
         }
 
-        await this.submit(fc);
+        // An agency that failed to answer still has its alerts - ending them would be wrong
+        if (!errs.length) await sync.end();
+
+        await this.patchEphemeral({ events: sync.cache });
+
+        console.log(`ok - ${sync.summary()}`);
 
         if (errs.length) {
             throw new Error(JSON.stringify(errs.map((e) => { return e.message })));
         }
     }
 
-    async controlAlerts(session: Session, agency: number): Promise<unknown[]> {
+    async eventCache(): Promise<EventCache> {
+        const layer = await this.fetchLayer();
+
+        try {
+            return this.type(EventCache, layer.incoming?.ephemeral.events ?? {});
+        } catch {
+            return {};
+        }
+    }
+
+    /**
+     * The ephemeral store is replaced on every write - merge so the cached
+     * session and the Event cache never clobber each other
+     */
+    async patchEphemeral(values: Record<string, unknown>): Promise<void> {
+        const layer = await this.fetchLayer();
+        const ephemeral = { ...(layer.incoming?.ephemeral ?? {}), ...values };
+
+        await this.setEphemeral(ephemeral);
+
+        if (layer.incoming) layer.incoming.ephemeral = ephemeral;
+    }
+
+    async controlAlerts(session: Session, agency: number, hours: number): Promise<unknown[]> {
         const agencyForm = new FormData();
         agencyForm.append('operation', 'get_archived_alerts_spreadsheet');
         agencyForm.append('auth', session.token);
         agencyForm.append('post_data', JSON.stringify({
             agency_id: agency,
-            from_date: moment().subtract(6, 'hours').unix() * 1000,
+            from_date: moment().subtract(hours, 'hours').unix() * 1000,
             to_date:   moment().unix() * 1000,
             file_type: 'Csv'
         }));
@@ -309,7 +365,7 @@ export default class Task extends ETL {
         const lifetime = jwtExpires(token) - +new Date();
         const margin = Math.min(SESSION_REFRESH_MARGIN_MS, lifetime / 2);
 
-        await this.setEphemeral({
+        await this.patchEphemeral({
             username: env.Username,
             token,
             agencies,
