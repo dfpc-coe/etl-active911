@@ -12,6 +12,12 @@
 
 ### Pending Release
 
+### v4.8.0
+
+- :tada: Add the optional `FallbackCoordinates` input (`Latitude,Longitude`) - alerts Active911 could not locate are placed there instead of being skipped, with a `Position` note in the Event remarks
+- :rocket: Alert metadata keeps the coordinates Active911 reported - coordinates taken from the place field are no longer written back over `lat`/`lon`
+- :white_check_mark: Unit tests for alert placement
+
 ### v4.7.0
 
 - :rocket: Simplify Event Sync & Let CloudTAK autoend events on expiry since Active911 never closes them

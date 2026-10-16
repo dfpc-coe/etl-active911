@@ -14,6 +14,7 @@ import { parseTime, parseZone } from './lib/time.js';
 import { PARSER_NAMES, parseNarrative, renderRemarks } from './lib/parsers/index.js';
 import { EventCache, EventSync } from './lib/events.js';
 import type { Assignee } from './lib/events.js';
+import { coordinates, fallback } from './lib/location.js';
 
 const Env = Type.Object({
     Username: Type.String({ description: 'Active911 Username' }),
@@ -31,6 +32,9 @@ const Env = Type.Object({
         minimum: 0.25,
         description: 'Hours after an alert is sent that its Event stays active - Active911 never closes an alert so this alone takes it off the map'
     }),
+    FallbackCoordinates: Type.Optional(Type.String({
+        description: 'Latitude,Longitude used to place alerts Active911 could not locate - ie 39.7392,-104.9903. Unlocated alerts are skipped when unset'
+    })),
     DEBUG: Type.Boolean({ description: 'Print the start of details that were not parsed in logs - CAD notes contain names & medical information', default: false })
 });
 
@@ -173,6 +177,9 @@ export default class Task extends ETL {
             marker: ASSIGNMENT_REMARKS
         });
 
+        const fallbackCoordinates = fallback(env.FallbackCoordinates);
+        let unlocated = 0;
+
         const errs: Error[] = [];
         for (let i = 0; i < filteredAgencies.length; i++) {
             const agency = filteredAgencies[i];
@@ -194,22 +201,7 @@ export default class Task extends ETL {
                 }
 
                 for (const p of parsed) {
-                     const activeAlert = this.type(AlertSchema, p)
-
-                     if (Number(activeAlert.lon) === 0 ||  Number(activeAlert.lat) === 0) {
-                         const coords = activeAlert.place
-                         .trim()
-                         .split(',')
-                         .map((c: string) => { return Number(c) })
-                         .slice(0, 2);
-
-                         if (coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
-                             activeAlert.lon = coords[1].toString();
-                             activeAlert.lat = coords[0].toString();
-                         } else {
-                             continue;
-                         }
-                     }
+                    const activeAlert = this.type(AlertSchema, p)
 
                     // Date Format: 12/08/2025 18:27:47 MST
                     const start = parseTime(activeAlert.sent);
@@ -217,6 +209,12 @@ export default class Task extends ETL {
 
                     const ended = EventSync.expiresAfter(env.ActiveHours, started, sync.cache[activeAlert.id]);
                     if (new Date(ended).getTime() <= Date.now()) continue;
+
+                    const placement = coordinates(activeAlert, fallbackCoordinates);
+                    if (!placement) {
+                        unlocated++;
+                        continue;
+                    }
 
                     // CAD notes aren't timezone aware - they are local to the zone the alert was sent in
                     const zone = parseZone(activeAlert.sent);
@@ -236,13 +234,14 @@ export default class Task extends ETL {
                             priority: EventSync.priorityOf(activeAlert.priority),
                             geometry: {
                                 type: 'Point',
-                                coordinates: [Number(activeAlert.lon), Number(activeAlert.lat)]
+                                coordinates: placement.coordinates
                             },
                             location: location(activeAlert),
                             started,
                             remarks: renderRemarks({
                                 Groups: activeAlert.units,
-                                Author: activeAlert.source
+                                Author: activeAlert.source,
+                                Position: placement.source === 'fallback' ? 'Not located by Active911 - placed at the layer FallbackCoordinates' : ''
                             }, narrative, zone),
                             metadata: { ...activeAlert, narrative }
                         },
@@ -261,6 +260,7 @@ export default class Task extends ETL {
 
         await this.patchEphemeral({ events: sync.cache });
 
+        if (unlocated) console.log(`ok - ${unlocated} alerts skipped without a position - set FallbackCoordinates to place them`);
         console.log(`ok - ${sync.summary()}`);
 
         if (errs.length) {

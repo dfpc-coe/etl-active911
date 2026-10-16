@@ -19,6 +19,7 @@ the `active911` external ID system by its alert ID:
 | Type | MIL-STD-2525E Incident (`10034000001100000000`) |
 | Priority | Alert priority - a CloudTAK priority word is taken as is, otherwise the first number with `1` as `critical`, `2` `high`, `3` `medium`, `4` and above `low` |
 | Location | Address, city and state |
+| Geometry | The alert coordinates, the coordinates Active911 writes into the place field of an alert it could not geocode, or `FallbackCoordinates` |
 | Started | Time the alert was sent |
 | Remarks | Groups, author and the parsed CAD notes table |
 | Metadata | The full alert and its parsed `narrative` |
@@ -34,6 +35,10 @@ A changed alert (new responses, updated CAD notes) is updated in place; an uncha
 an alert is older than `ActiveHours` it is no longer polled and its Event has already ended on its own, so it is simply
 dropped from the cache - this layer never ends an Event itself. When the cache has no record of an alert the Events
 visible to the layer are indexed by external ID before a new Event is created, so an Event is never duplicated.
+
+Active911 reports `0,0` for an alert it could not geocode. Set `FallbackCoordinates` (`Latitude,Longitude`, ie
+`39.7392,-104.9903`) so every alert still becomes an Event - unlocated alerts are placed there and their remarks say so.
+When it is unset unlocated alerts are skipped and counted in the layer logs.
 
 Writing Events without naming Channels requires a CloudTAK release newer than 13.110.1 - earlier releases reject the Event
 create request.
@@ -74,6 +79,7 @@ Setting up an Active911 ETL will require the following:
 - The account should be created specifically for TAK and only 1 account should be used per layer as only 1 login can be active at a time
 - The account must have the permissions to view Alerts to be able to export the active alerts as a CSV
 - `ActiveHours` (default `6`) - hours after an alert is sent that its Event stays on the map; Active911 never closes an alert so this alone ends it
+- `FallbackCoordinates` (optional) - `Latitude,Longitude` that places alerts Active911 could not locate; unlocated alerts are skipped when unset
 
 ## Development
 
