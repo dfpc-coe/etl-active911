@@ -12,6 +12,10 @@
 
 ### Pending Release
 
+### v4.6.2
+
+- :rocket: Simplify Event Sync & Let CloudTAK autoend events on expiry since Active911 never closes them
+
 ### v4.6.1
 
 - :rocket: Add Event Sync
@@ -22,7 +26,6 @@
 - :tada: Add the `ActiveHours` input (default `6`) - Active911 never closes an alert, so each Event is set to end that many hours after the alert was sent and alerts older than that are no longer polled
 - :rocket: Alert priorities are mapped onto the Event priority scale and the address becomes the Event location
 - :rocket: The Event ID & a digest of the last state written are cached in the layer ephemeral store so unchanged alerts cost no API calls; the Active911 session is merged into the same store
-- :rocket: Events are never ended while any agency failed to return its alerts
 - :white_check_mark: Unit tests for the Event sync against an in-memory CloudTAK API
 - :arrow_up: `@tak-ps/etl@^10.24.1`
 

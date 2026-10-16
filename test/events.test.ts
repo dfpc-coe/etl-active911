@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import type { CloudTAKAPI, CoreEvent, CoreEventAssignment, CoreEventCreate, CoreEventUpdate, CoreEventAssignmentCreate, CoreEventAssignmentUpdate, CoreEventListQuery } from '@tak-ps/etl';
-import { EventSync, priorityOf, clampName, expiresAfter } from '../lib/events.js';
+import { EventSync } from '../lib/events.js';
 import type { EventCache, SyncedCall } from '../lib/events.js';
 
 const SYSTEM = 'test';
@@ -116,20 +116,20 @@ async function run(api: FakeAPI, cache: EventCache, calls: SyncedCall[], end = t
     return sync;
 }
 
-test('priorityOf', () => {
-    assert.equal(priorityOf('1'), 'critical');
-    assert.equal(priorityOf('P2'), 'high');
-    assert.equal(priorityOf('Priority 3'), 'medium');
-    assert.equal(priorityOf('4'), 'low');
-    assert.equal(priorityOf('High'), 'high');
-    assert.equal(priorityOf(''), 'none');
-    assert.equal(priorityOf(undefined), 'none');
-    assert.equal(priorityOf('Routine'), 'none');
+test('EventSync.priorityOf', () => {
+    assert.equal(EventSync.priorityOf('1'), 'critical');
+    assert.equal(EventSync.priorityOf('P2'), 'high');
+    assert.equal(EventSync.priorityOf('Priority 3'), 'medium');
+    assert.equal(EventSync.priorityOf('4'), 'low');
+    assert.equal(EventSync.priorityOf('High'), 'high');
+    assert.equal(EventSync.priorityOf(''), 'none');
+    assert.equal(EventSync.priorityOf(undefined), 'none');
+    assert.equal(EventSync.priorityOf('Routine'), 'none');
 });
 
-test('clampName', () => {
-    assert.equal(clampName('short'), 'short');
-    assert.equal(clampName('x'.repeat(80)).length, 64);
+test('EventSync.clampName', () => {
+    assert.equal(EventSync.clampName('short'), 'short');
+    assert.equal(EventSync.clampName('x'.repeat(80)).length, 64);
 });
 
 test('EventSync: create, skip unchanged, extend, update, end', async () => {
@@ -185,14 +185,14 @@ test('EventSync: create, skip unchanged, extend, update, end', async () => {
     assert.notEqual(cache.A.id, a.id);
 });
 
-test('expiresAfter', () => {
+test('EventSync.expiresAfter', () => {
     const sent = new Date(Date.now() - HOUR).toISOString();
-    assert.ok(within(expiresAfter(6, sent), 5 * HOUR), 'a fixed window after the start');
-    assert.equal(expiresAfter(6, 'Invalid date', { expires: 'kept' }), 'kept', 'an unknown start keeps the cached expiry');
-    assert.ok(within(expiresAfter(6, undefined), 6 * HOUR), 'an unknown start with no cache is a window from now');
+    assert.ok(within(EventSync.expiresAfter(6, sent), 5 * HOUR), 'a fixed window after the start');
+    assert.equal(EventSync.expiresAfter(6, 'Invalid date', { expires: 'kept' }), 'kept', 'an unknown start keeps the cached expiry');
+    assert.ok(within(EventSync.expiresAfter(6, undefined), 6 * HOUR), 'an unknown start with no cache is a window from now');
 });
 
-test('EventSync: a record with its own ended is never extended & ends on its own', async () => {
+test('EventSync: a record with its own ended is never extended & is pruned once it has ended', async () => {
     const api = new FakeAPI();
     const cache: EventCache = {};
     const soon = new Date(Date.now() + 10 * 60 * 1000).toISOString();
@@ -212,9 +212,11 @@ test('EventSync: a record with its own ended is never extended & ends on its own
     assert.equal(a.ended, later);
 
     cache.A.expires = new Date(Date.now() - 1000).toISOString();
-    sync = await run(api, cache, []);
+    api.log = [];
+    sync = new EventSync(api as unknown as CloudTAKAPI, cache, { system: SYSTEM, marker: MARKER });
+    sync.prune();
     assert.deepEqual(sync.counts, { created: 0, updated: 0, extended: 0, unchanged: 0, ended: 1, failed: 0 });
-    assert.deepEqual(api.log, [], 'an Event past its expiry is not patched');
+    assert.deepEqual(api.log, [], 'an Event past its expiry is forgotten, not patched');
     assert.deepEqual(cache, {});
 });
 

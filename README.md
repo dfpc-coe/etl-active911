@@ -32,8 +32,7 @@ to the Event by users are never modified or removed.
 The Event ID, a digest of the last state written and the end time are cached per alert in the layer's ephemeral store.
 A changed alert (new responses, updated CAD notes) is updated in place; an unchanged alert costs no CloudTAK API calls. Once
 an alert is older than `ActiveHours` it is no longer polled and its Event has already ended on its own, so it is simply
-dropped from the cache. An alert that disappears from Active911 before then has its Event ended immediately - unless an
-agency failed to return its alerts, in which case nothing is ended. When the cache has no record of an alert the Events
+dropped from the cache - this layer never ends an Event itself. When the cache has no record of an alert the Events
 visible to the layer are indexed by external ID before a new Event is created, so an Event is never duplicated.
 
 Writing Events without naming Channels requires a CloudTAK release newer than 13.110.1 - earlier releases reject the Event

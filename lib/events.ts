@@ -53,58 +53,6 @@ export type EventSyncOptions = {
     expireHours?: number;
 };
 
-export const NAME_MAX_LENGTH = 64;
-
-export function clampName(name: string): string {
-    return name.length > NAME_MAX_LENGTH ? `${name.slice(0, NAME_MAX_LENGTH - 1)}…` : name;
-}
-
-/**
- * CAD priorities are agency configured but near universally numbered with 1 as
- * the most urgent - the first number found is mapped onto the CloudTAK scale,
- * a CloudTAK priority word is taken as is & anything else is left unprioritised
- */
-export function priorityOf(value: string | null | undefined): Priority {
-    const text = (value ?? '').trim().toLowerCase();
-    if (!text) return 'none';
-
-    for (const word of ['critical', 'high', 'medium', 'low'] as const) {
-        if (text.includes(word)) return word;
-    }
-
-    const match = text.match(/\d+/);
-    if (!match) return 'none';
-
-    const level = Number(match[0]);
-    if (level <= 1) return 'critical';
-    if (level === 2) return 'high';
-    if (level === 3) return 'medium';
-    return 'low';
-}
-
-/**
- * The time an Event ends when the source never closes its records - a fixed
- * window after the record started, or after it was first seen when the start
- * is unknown
- */
-export function expiresAfter(hours: number, started?: string, cached?: { expires?: string }): string {
-    const window = hours * 60 * 60 * 1000;
-    const start = started ? new Date(started).getTime() : NaN;
-
-    if (!Number.isNaN(start)) return new Date(start + window).toISOString();
-
-    return cached?.expires ?? new Date(Date.now() + window).toISOString();
-}
-
-function digest(value: unknown): string {
-    return createHash('sha256').update(JSON.stringify(value)).digest('hex');
-}
-
-function statusOf(err: unknown): number | null {
-    if (err instanceof Error && 'status' in err && typeof err.status === 'number') return err.status;
-    return null;
-}
-
 /**
  * Keep CloudTAK Events & their Assignments in step with an external system's
  * records. A record that carries its own `ended` keeps it; otherwise every
@@ -119,10 +67,64 @@ export class EventSync {
     counts: Counts = { created: 0, updated: 0, extended: 0, unchanged: 0, ended: 0, failed: 0 };
     seen = new Set<string>();
 
+    static NAME_MAX_LENGTH = 64;
+    static INDEX_PAGE_SIZE = 100;
+    static INDEX_MAX_PAGES = 20;
+
     constructor(api: CloudTAKAPI, cache: EventCache, opts: EventSyncOptions) {
         this.api = api;
         this.cache = cache;
         this.opts = opts;
+    }
+
+    static clampName(name: string): string {
+        return name.length > this.NAME_MAX_LENGTH ? `${name.slice(0, this.NAME_MAX_LENGTH - 1)}…` : name;
+    }
+
+    /**
+     * CAD priorities are agency configured but near universally numbered with 1 as
+     * the most urgent - the first number found is mapped onto the CloudTAK scale,
+     * a CloudTAK priority word is taken as is & anything else is left unprioritised
+     */
+    static priorityOf(value: string | null | undefined): Priority {
+        const text = (value ?? '').trim().toLowerCase();
+        if (!text) return 'none';
+
+        for (const word of ['critical', 'high', 'medium', 'low'] as const) {
+            if (text.includes(word)) return word;
+        }
+
+        const match = text.match(/\d+/);
+        if (!match) return 'none';
+
+        const level = Number(match[0]);
+        if (level <= 1) return 'critical';
+        if (level === 2) return 'high';
+        if (level === 3) return 'medium';
+        return 'low';
+    }
+
+    /**
+     * The time an Event ends when the source never closes its records - a fixed
+     * window after the record started, or after it was first seen when the start
+     * is unknown
+     */
+    static expiresAfter(hours: number, started?: string, cached?: { expires?: string }): string {
+        const window = hours * 60 * 60 * 1000;
+        const start = started ? new Date(started).getTime() : NaN;
+
+        if (!Number.isNaN(start)) return new Date(start + window).toISOString();
+
+        return cached?.expires ?? new Date(Date.now() + window).toISOString();
+    }
+
+    private static digest(value: unknown): string {
+        return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+    }
+
+    private static statusOf(err: unknown): number | null {
+        if (err instanceof Error && 'status' in err && typeof err.status === 'number') return err.status;
+        return null;
     }
 
     /**
@@ -142,21 +144,32 @@ export class EventSync {
     }
 
     /**
-     * End the Events of cached records that were not synced this run - an
-     * Event whose expiry has already passed ended on its own
+     * Forget records whose Event has already ended on its own
+     */
+    prune(): void {
+        for (const external of Object.keys(this.cache)) {
+            const expires = this.cache[external].expires;
+            if (expires === undefined || new Date(expires).getTime() > Date.now()) continue;
+
+            delete this.cache[external];
+            this.counts.ended++;
+        }
+    }
+
+    /**
+     * End the Events of cached records that were not synced this run
      */
     async end(): Promise<void> {
+        this.prune();
+
         for (const external of Object.keys(this.cache)) {
             if (this.seen.has(external)) continue;
 
-            const cached = this.cache[external];
-            const expired = cached.expires !== undefined && new Date(cached.expires).getTime() <= Date.now();
-
             try {
-                if (!expired) await this.api.Event.update(cached.id, { active: false });
+                await this.api.Event.update(this.cache[external].id, { active: false });
                 this.counts.ended++;
             } catch (err) {
-                if (statusOf(err) !== 404) {
+                if (EventSync.statusOf(err) !== 404) {
                     this.counts.failed++;
                     console.error(`not ok - ${this.opts.system} ${external} could not be ended: ${err instanceof Error ? err.message : String(err)}`);
                     continue;
@@ -173,7 +186,7 @@ export class EventSync {
     }
 
     private async write(call: SyncedCall): Promise<void> {
-        const hash = digest({ event: call.event, assignees: call.assignees, ended: call.ended });
+        const hash = EventSync.digest({ event: call.event, assignees: call.assignees, ended: call.ended });
 
         const now = Date.now();
         const window = !call.ended && this.opts.expireHours ? this.opts.expireHours * 60 * 60 * 1000 : 0;
@@ -201,7 +214,7 @@ export class EventSync {
                 this.counts.extended++;
                 return;
             } catch (err) {
-                if (statusOf(err) !== 404) throw err;
+                if (EventSync.statusOf(err) !== 404) throw err;
                 cached = undefined;
                 delete this.cache[call.external];
             }
@@ -213,7 +226,7 @@ export class EventSync {
             try {
                 event = await this.api.Event.update(cached.id, { ...call.event, ended });
             } catch (err) {
-                if (statusOf(err) !== 404) throw err;
+                if (EventSync.statusOf(err) !== 404) throw err;
                 delete this.cache[call.external];
             }
         }
@@ -280,20 +293,17 @@ export class EventSync {
     private async buildIndex(): Promise<Map<string, string>> {
         const index = new Map<string, string>();
 
-        for (let page = 0; page < INDEX_MAX_PAGES; page++) {
-            const list = await this.api.Event.list({ limit: INDEX_PAGE_SIZE, page });
+        for (let page = 0; page < EventSync.INDEX_MAX_PAGES; page++) {
+            const list = await this.api.Event.list({ limit: EventSync.INDEX_PAGE_SIZE, page });
 
             for (const item of list.items) {
                 const value = item.external_ids[this.opts.system];
                 if (value && !index.has(value)) index.set(value, item.id);
             }
 
-            if (list.items.length < INDEX_PAGE_SIZE) break;
+            if (list.items.length < EventSync.INDEX_PAGE_SIZE) break;
         }
 
         return index;
     }
 }
-
-const INDEX_PAGE_SIZE = 100;
-const INDEX_MAX_PAGES = 20;

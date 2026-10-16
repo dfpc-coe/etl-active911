@@ -12,7 +12,7 @@ import type { NamedSchema } from '@tak-ps/etl';
 import { parse } from 'csv-parse/sync'
 import { parseTime, parseZone } from './lib/time.js';
 import { PARSER_NAMES, parseNarrative, renderRemarks } from './lib/parsers/index.js';
-import { EventCache, EventSync, clampName, expiresAfter, priorityOf } from './lib/events.js';
+import { EventCache, EventSync } from './lib/events.js';
 import type { Assignee } from './lib/events.js';
 
 const Env = Type.Object({
@@ -108,7 +108,7 @@ export function responders(responses: string): Array<Assignee> {
         if (!line.startsWith('Got a response of ')) continue;
 
         const match = RESPONSE_REGEX.exec(line);
-        const name = clampName(match ? match[2].trim() : 'Unknown');
+        const name = EventSync.clampName(match ? match[2].trim() : 'Unknown');
 
         byName.set(name, {
             name,
@@ -215,7 +215,7 @@ export default class Task extends ETL {
                     const start = parseTime(activeAlert.sent);
                     const started = start && !Number.isNaN(new Date(start).getTime()) ? start : undefined;
 
-                    const ended = expiresAfter(env.ActiveHours, started, sync.cache[activeAlert.id]);
+                    const ended = EventSync.expiresAfter(env.ActiveHours, started, sync.cache[activeAlert.id]);
                     if (new Date(ended).getTime() <= Date.now()) continue;
 
                     // CAD notes aren't timezone aware - they are local to the zone the alert was sent in
@@ -231,9 +231,9 @@ export default class Task extends ETL {
                         external: activeAlert.id,
                         ended,
                         event: {
-                            name: clampName(activeAlert.description.trim() || `Alert ${activeAlert.id}`),
+                            name: EventSync.clampName(activeAlert.description.trim() || `Alert ${activeAlert.id}`),
                             type: EVENT_SIDC,
-                            priority: priorityOf(activeAlert.priority),
+                            priority: EventSync.priorityOf(activeAlert.priority),
                             geometry: {
                                 type: 'Point',
                                 coordinates: [Number(activeAlert.lon), Number(activeAlert.lat)]
@@ -257,8 +257,7 @@ export default class Task extends ETL {
             }
         }
 
-        // An agency that failed to answer still has its alerts - ending them would be wrong
-        if (!errs.length) await sync.end();
+        sync.prune();
 
         await this.patchEphemeral({ events: sync.cache });
 
