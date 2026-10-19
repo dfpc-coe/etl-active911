@@ -16,7 +16,7 @@ the `active911` external ID system by its alert ID:
 | Event field | Source |
 | ----------- | ------ |
 | Name | Alert description |
-| Type | MIL-STD-2525E Incident (`10034000001100000000`) |
+| Type | `EventType` - MIL-STD-2525E Incident (`10034000001100000000`) unless changed |
 | Priority | Alert priority - a CloudTAK priority word is taken as is, otherwise the first number with `1` as `critical`, `2` `high`, `3` `medium`, `4` and above `low` |
 | Location | Address, city and state |
 | Geometry | The alert coordinates, the coordinates Active911 writes into the place field of an alert it could not geocode, or `FallbackCoordinates` |
@@ -78,6 +78,7 @@ Setting up an Active911 ETL will require the following:
 - An Active911 User/Password that can login to the [online portal](https://interface.active911.com/interface/index.php)
 - The account should be created specifically for TAK and only 1 account should be used per layer as only 1 login can be active at a time
 - The account must have the permissions to view Alerts to be able to export the active alerts as a CSV
+- `EventType` (default MIL-STD-2525E Incident `10034000001100000000`) - Symbol ID every alert Event is created with, picked with the CloudTAK type selector; changing it retypes the Events of alerts still being polled on the next run
 - `ActiveHours` (default `6`) - hours after an alert is sent that its Event stays on the map; Active911 never closes an alert so this alone ends it
 - `FallbackCoordinates` (optional) - `Latitude,Longitude` that places alerts Active911 could not locate; unlocated alerts are skipped when unset
 

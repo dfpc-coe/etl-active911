@@ -12,6 +12,10 @@
 
 ### Pending Release
 
+### v4.9.0
+
+- :tada: Add the `EventType` input - the MIL-STD-2525E Symbol ID alert Events are created with, chosen with the CloudTAK type picker and defaulting to the Incident symbol
+
 ### v4.8.0
 
 - :tada: Add the optional `FallbackCoordinates` input (`Latitude,Longitude`) - alerts Active911 could not locate are placed there instead of being skipped, with a `Position` note in the Event remarks

@@ -16,6 +16,9 @@ import { EventCache, EventSync } from './lib/events.js';
 import type { Assignee } from './lib/events.js';
 import { coordinates, fallback } from './lib/location.js';
 
+/** MIL-STD-2525E Incident symbol - the CloudTAK default for a new Event */
+const EVENT_SIDC = '10034000001100000000';
+
 const Env = Type.Object({
     Username: Type.String({ description: 'Active911 Username' }),
     Password: Type.String({ description: 'Active911 Password' }),
@@ -27,6 +30,11 @@ const Env = Type.Object({
             default: 'auto'
         })
     })),
+    EventType: Type.String({
+        'default': EVENT_SIDC,
+        '@widget': 'type',
+        'description': 'MIL-STD-2525E Symbol ID every alert Event is created with'
+    }),
     ActiveHours: Type.Number({
         default: 6,
         minimum: 0.25,
@@ -44,9 +52,6 @@ const SESSION_REFRESH_MARGIN_MS = 5 * 60 * 1000;
 
 /** External ID system alert IDs are filed under on CloudTAK Events */
 const EXTERNAL_SYSTEM = 'active911';
-
-/** MIL-STD-2525E Incident symbol - the CloudTAK default for a new Event */
-const EVENT_SIDC = '10034000001100000000';
 
 /** Marks the Assignments this task manages so people added by users are left alone */
 const ASSIGNMENT_REMARKS = 'Active911 Response';
@@ -230,7 +235,7 @@ export default class Task extends ETL {
                         ended,
                         event: {
                             name: EventSync.clampName(activeAlert.description.trim() || `Alert ${activeAlert.id}`),
-                            type: EVENT_SIDC,
+                            type: env.EventType || EVENT_SIDC,
                             priority: EventSync.priorityOf(activeAlert.priority),
                             geometry: {
                                 type: 'Point',
