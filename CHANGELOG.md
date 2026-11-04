@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v4.10.0
+
+- :arrow_up: Update Core Dependencies
+
 ### Pending Release
 
 ### v4.9.0
