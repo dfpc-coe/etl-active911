@@ -1,4 +1,5 @@
 import { Static, Type, TSchema } from '@sinclair/typebox';
+import { Value } from '@sinclair/typebox/value';
 import { CookieJar } from 'tough-cookie';
 import type { SerializedCookieJar } from 'tough-cookie';
 // The dispatcher of undici@8 can't be given to the fetch that is built into Node 24 (undici@7) - the request never
@@ -12,8 +13,8 @@ import type { NamedSchema } from '@tak-ps/etl';
 import { parse } from 'csv-parse/sync'
 import { parseTime, parseZone } from './lib/time.js';
 import { PARSER_NAMES, parseNarrative, renderRemarks } from './lib/parsers/index.js';
-import { EventCache, EventSync } from './lib/events.js';
-import type { Assignee } from './lib/events.js';
+import { EventCacheSchema, EventSync } from './lib/events.js';
+import type { Assignee, EventCache } from './lib/events.js';
 import { coordinates, fallback } from './lib/location.js';
 
 /** MIL-STD-2525E Incident symbol - the CloudTAK default for a new Event */
@@ -95,6 +96,18 @@ const AlertSchema = Type.Object({
     responses: Type.String(),
 });
 
+const AlertsResponse = Type.Object({
+    result: Type.Optional(Type.Unknown()),
+    message: Type.String()
+});
+
+const LoginSession = Type.Object({
+    jwt: Type.String(),
+    agencies: Type.Array(Type.Object({
+        id: Type.Number()
+    }))
+});
+
 const OutputSchema = Type.Composite([AlertSchema, Type.Object({
     narrative: Type.Object({
         parser: Type.String({ description: 'Parser that produced the narrative - raw if the details were not parsed' }),
@@ -106,6 +119,14 @@ const OutputSchema = Type.Composite([AlertSchema, Type.Object({
         fields: Type.Record(Type.String(), Type.String())
     })
 })]);
+
+function isObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
+}
+
+function isSerializedJar(value: unknown): value is SerializedCookieJar {
+    return isObject(value) && Array.isArray(value.cookies);
+}
 
 /**
  * Responses are in chronological order - the latest response of each person wins
@@ -145,14 +166,12 @@ export default class Task extends ETL {
         flow: DataFlowType = DataFlowType.Incoming
     ): Promise<TSchema | Array<NamedSchema>> {
         if (flow === DataFlowType.Incoming) {
-            if (type === SchemaType.Input) {
-                return Env;
-            } else {
-                return [{ id: 'alert', schema: OutputSchema }];
-            }
-        } else {
-            return Type.Object({});
+            if (type === SchemaType.Input) return Env;
+
+            return [{ id: 'alert', schema: OutputSchema }];
         }
+
+        return Type.Object({});
     }
 
     async control(): Promise<void> {
@@ -162,9 +181,9 @@ export default class Task extends ETL {
 
         const filteredAgencies: number[] = [];
         const parsers = new Map<number, string>();
-        if (Array.isArray(env.Agencies) && env.Agencies.length) {
+        if (Array.isArray(env.Agencies) && env.Agencies.length > 0) {
             for (const a of env.Agencies) {
-                const id = parseInt(a.AgencyId);
+                const id = Number(a.AgencyId);
 
                 // The account may have been given access to the agency since the session was cached
                 if (!session.agencies.includes(id) && session.cached) session = await this.controlSession(env, true);
@@ -224,7 +243,7 @@ export default class Task extends ETL {
                     // CAD notes aren't timezone aware - they are local to the zone the alert was sent in
                     const zone = parseZone(activeAlert.sent);
                     const narrative = parseNarrative(activeAlert.details, zone, parsers.get(agency));
-                    parsedBy.set(narrative.parser, (parsedBy.get(narrative.parser) || 0) + 1);
+                    parsedBy.set(narrative.parser, (parsedBy.get(narrative.parser) ?? 0) + 1);
 
                     if (env.DEBUG && narrative.parser === 'raw' && activeAlert.details.trim()) {
                         console.log(`ok - alert ${activeAlert.id} not parsed: ${escaped(activeAlert.details.slice(0, 80))}`);
@@ -268,7 +287,7 @@ export default class Task extends ETL {
         if (unlocated) console.log(`ok - ${unlocated} alerts skipped without a position - set FallbackCoordinates to place them`);
         console.log(`ok - ${sync.summary()}`);
 
-        if (errs.length) {
+        if (errs.length > 0) {
             throw new Error(JSON.stringify(errs.map((e) => { return e.message })));
         }
     }
@@ -277,7 +296,7 @@ export default class Task extends ETL {
         const layer = await this.fetchLayer();
 
         try {
-            return this.type(EventCache, layer.incoming?.ephemeral.events ?? {});
+            return this.type(EventCacheSchema, layer.incoming?.ephemeral.events ?? {});
         } catch {
             return {};
         }
@@ -289,7 +308,7 @@ export default class Task extends ETL {
      */
     async patchEphemeral(values: Record<string, unknown>): Promise<void> {
         const layer = await this.fetchLayer();
-        const ephemeral = { ...(layer.incoming?.ephemeral ?? {}), ...values };
+        const ephemeral = { ...layer.incoming?.ephemeral, ...values };
 
         await this.setEphemeral(ephemeral);
 
@@ -307,7 +326,7 @@ export default class Task extends ETL {
             file_type: 'Csv'
         }));
 
-        const alerts_res = await fetch(`https://interface.active911.com/interface/interface.ajax.php?callback=jQuery${+new Date()}`, {
+        const alerts_res = await fetch(`https://interface.active911.com/interface/interface.ajax.php?callback=jQuery${Date.now()}`, {
             dispatcher: session.agent,
             headers: {
                 Origin: 'https://interface.active911.com',
@@ -319,12 +338,14 @@ export default class Task extends ETL {
 
         if (!alerts_res.ok) throw new Error(await alerts_res.text());
 
-        const alerts = JSON.parse(
+        const alerts: unknown = JSON.parse(
             (await alerts_res.text())
                 .trim()
                 .replace(/^[^{]+/, '')
                 .replace(/[^}]+$/, '')
         );
+
+        if (!Value.Check(AlertsResponse, alerts)) throw new Error(`Unexpected Active911 response: ${JSON.stringify(alerts)}`);
 
         if (alerts.result === 'error') throw new Error(alerts.message);
 
@@ -344,10 +365,12 @@ export default class Task extends ETL {
             && ephemeral.username === env.Username
             && typeof ephemeral.token === 'string'
             && Array.isArray(ephemeral.agencies)
-            && Number(ephemeral.expires) > +new Date()
+            && Number(ephemeral.expires) > Date.now()
         ) {
             try {
-                const jar = CookieJar.deserializeSync(ephemeral.cookies as SerializedCookieJar);
+                if (!isSerializedJar(ephemeral.cookies)) throw new Error('serialized jar has no cookies array');
+
+                const jar = CookieJar.deserializeSync(ephemeral.cookies);
 
                 console.log('ok - using cached session');
 
@@ -366,7 +389,7 @@ export default class Task extends ETL {
         const agent = cookieAgent(jar);
         const { token, agencies } = await this.controlLogin(agent, env);
 
-        const lifetime = jwtExpires(token) - +new Date();
+        const lifetime = jwtExpires(token) - Date.now();
         const margin = Math.min(SESSION_REFRESH_MARGIN_MS, lifetime / 2);
 
         await this.patchEphemeral({
@@ -374,7 +397,7 @@ export default class Task extends ETL {
             token,
             agencies,
             cookies: jar.serializeSync(),
-            expires: +new Date() + lifetime - margin
+            expires: Date.now() + lifetime - margin
         });
 
         return { agent, token, agencies, cached: false };
@@ -391,7 +414,7 @@ export default class Task extends ETL {
             username: env.Username,
             password: env.Password,
             permanent: 0,
-            timeInitiated: +new Date() / 1000
+            timeInitiated: Date.now() / 1000
         }));
 
         const login_res = await fetch("https://interface.active911.com/interface/interface.ajax.php", {
@@ -401,22 +424,22 @@ export default class Task extends ETL {
             body: loginForm,
         })
 
-        const body = JSON.parse((await login_res.text())
+        const body: unknown = JSON.parse((await login_res.text())
             .trim()
             .replace(/^\(/, '')
             .replace(/\)$/, '')
         );
 
-        const login = body.message;
+        const login = isObject(body) ? body.message : undefined;
 
         // A failed login must never be cached as a session
-        if (body.result === 'error' || !login || typeof login.jwt !== 'string' || !Array.isArray(login.agencies)) {
+        if (!isObject(body) || body.result === 'error' || !Value.Check(LoginSession, login)) {
             throw new Error(`Active911 Login Failed: ${typeof login === 'string' ? login : 'No token returned'}`);
         }
 
         return {
             token: login.jwt,
-            agencies: login.agencies.map((a: { id: number }) => {
+            agencies: login.agencies.map((a) => {
                 return a.id;
             })
         };
@@ -429,29 +452,30 @@ export default class Task extends ETL {
  * which TypeScript treats as distinct from the identical ESM declarations imported here
  */
 function cookieAgent(jar: CookieJar): CookieAgent {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- identical CJS & ESM declarations of CookieJar
     return new CookieAgent({ cookies: { jar: jar as unknown as CookieOptions['jar'] } });
 }
 
 /** Printable ASCII with everything else as a code point so that whitespace Active911 has substituted can be seen */
 function escaped(text: string): string {
     return Array.from(text).map((c) => {
-        return /[\x20-\x7e]/.test(c) ? c : `\\u{${c.codePointAt(0)!.toString(16)}}`;
+        return /[\u0020-\u007E]/.test(c) ? c : `\\u{${(c.codePointAt(0) ?? 0).toString(16)}}`;
     }).join('');
 }
 
 /** Expiry of a JWT in ms from its `exp` claim - a default lifetime from now if it doesn't have one */
 function jwtExpires(token: string): number {
     try {
-        const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
-        if (typeof claims.exp === 'number') return claims.exp * 1000;
+        const claims: unknown = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+        if (isObject(claims) && typeof claims.exp === 'number') return claims.exp * 1000;
     } catch {
         // Not a decodable JWT - fall through to the default lifetime
     }
 
-    return +new Date() + SESSION_LIFETIME_MS;
+    return Date.now() + SESSION_LIFETIME_MS;
 }
 
 await local(await Task.init(import.meta.url), import.meta.url);
-export async function handler(event: Event = {}) {
-    return await internal(await Task.init(import.meta.url), event);
+export async function handler(event: Event = {}): ReturnType<typeof internal> {
+    return internal(await Task.init(import.meta.url), event);
 }

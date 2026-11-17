@@ -10,13 +10,13 @@ import type {
 } from '@tak-ps/etl';
 
 /** CloudTAK Event ID, a digest of the last state written & the expiry last set, keyed by external ID */
-export const EventCache = Type.Record(Type.String(), Type.Object({
+export const EventCacheSchema = Type.Record(Type.String(), Type.Object({
     id: Type.String(),
     hash: Type.String(),
     expires: Type.Optional(Type.String())
 }));
 
-export type EventCache = Static<typeof EventCache>;
+export type EventCache = Static<typeof EventCacheSchema>;
 
 export type Priority = NonNullable<CoreEventUpdate['priority']>;
 
@@ -185,17 +185,22 @@ export class EventSync {
         return `${this.seen.size} records: ${c.created} created, ${c.updated} updated, ${c.extended} extended, ${c.unchanged} unchanged, ${c.ended} ended, ${c.failed} failed`;
     }
 
+    private cached(external: string): EventCache[string] | undefined {
+        return this.cache[external];
+    }
+
     private async write(call: SyncedCall): Promise<void> {
         const hash = EventSync.digest({ event: call.event, assignees: call.assignees, ended: call.ended });
 
         const now = Date.now();
-        const window = !call.ended && this.opts.expireHours ? this.opts.expireHours * 60 * 60 * 1000 : 0;
+        const hours = this.opts.expireHours ?? 0;
+        const window = !call.ended && hours ? hours * 60 * 60 * 1000 : 0;
         const ended = call.ended ?? (window ? new Date(now + window).toISOString() : undefined);
 
-        let cached: EventCache[string] | undefined = this.cache[call.external];
+        let cached = this.cached(call.external);
 
         if (!cached) {
-            const found = await this.find(call.external);
+            const found = await this.findEvent(call.external);
             if (found) cached = { id: found.id, hash: '' };
         }
 
@@ -280,7 +285,7 @@ export class EventSync {
      * memory of it - the Events visible to the task are indexed by external
      * ID once per run, newest first, on the first miss
      */
-    private async find(external: string): Promise<{ id: string } | null> {
+    private async findEvent(external: string): Promise<{ id: string } | null> {
         this.index ??= this.buildIndex();
 
         const id = (await this.index).get(external);

@@ -28,7 +28,8 @@ class FakeAPI implements EventAPI {
     Event = {
         list: async (query: Partial<CoreEventListQuery> = {}) => {
             this.log.push(`list ${query.page ?? 0}`);
-            const items = [...this.events.values()].reverse();
+            const items = [...this.events.values()];
+            items.reverse();
             const limit = query.limit ?? 10;
             const page = query.page ?? 0;
             return { total: items.length, items: items.slice(page * limit, (page + 1) * limit) };
@@ -36,7 +37,7 @@ class FakeAPI implements EventAPI {
         create: async (body: CoreEventCreate) => {
             this.log.push('create');
             const { external_id, ...rest } = body;
-            const external = external_id && typeof external_id === 'object' ? { [external_id.system]: external_id.value } : {};
+            const external = typeof external_id === 'object' ? { [external_id.system]: external_id.value } : {};
             const event = { id: `event-${++this.seq}`, active: true, ...rest, external_ids: external } as unknown as CoreEvent;
             this.events.set(event.id, event);
             this.assignments.set(event.id, new Map());

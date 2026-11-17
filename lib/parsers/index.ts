@@ -45,7 +45,7 @@ export function parseNarrative(details: string, zone: string, name = 'auto'): Na
 
     try {
         const parsed = parser.parse(details, zone);
-        if (!parsed.entries.length) return raw(details);
+        if (parsed.entries.length === 0) return raw(details);
 
         return { parser: parser.name, ...parsed };
     } catch (err) {
@@ -56,9 +56,9 @@ export function parseNarrative(details: string, zone: string, name = 'auto'): Na
 
 function cell(text: string): string {
     return text
-        .replace(/\\/g, '\\\\')
-        .replace(/\|/g, '\\|')
-        .replace(/\s*\n\s*/g, ' ')
+        .replaceAll('\\', '\\\\')
+        .replaceAll('|', '\\|')
+        .replaceAll(/\s*\n\s*/g, ' ')
         .trim();
 }
 
@@ -85,6 +85,13 @@ function notesTable(entries: NarrativeEntry[], zone: string): string {
     ].join('\n');
 }
 
+function labelled(fields: Record<string, string>): string {
+    return Object.entries(fields)
+        .filter(([, value]) => value && value.trim())
+        .map(([label, value]) => `**${label}:** ${value.trim()}`)
+        .join('\n');
+}
+
 /**
  * Markdown remarks for an alert - CAD notes are rendered as a table
  *
@@ -95,13 +102,6 @@ export function renderRemarks(
     narrative: Narrative,
     zone: string
 ): string {
-    const labelled = (fields: Record<string, string>): string => {
-        return Object.entries(fields)
-            .filter(([, value]) => value && value.trim())
-            .map(([label, value]) => `**${label}:** ${value.trim()}`)
-            .join('\n');
-    };
-
     const notes = narrative.parser === 'raw'
         ? narrative.entries.map((e) => e.text).join('\n')
         : notesTable(narrative.entries, zone);

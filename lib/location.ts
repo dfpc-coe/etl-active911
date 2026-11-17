@@ -20,7 +20,7 @@ export function fallback(value?: string): [number, number] | null {
 
     const [lat, lon, ...rest] = value.split(',').map((part) => toCoordinate(part.trim()));
 
-    if (rest.length || lat === null || lat === undefined || lon === null || lon === undefined) {
+    if (rest.length > 0 || lat === null || lat === undefined || lon === null || lon === undefined) {
         console.error(`not ok - invalid FallbackCoordinates: ${value}`);
         return null;
     }

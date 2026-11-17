@@ -103,9 +103,9 @@ test('spillman: two notes truncated inside of the last with the trailer on its o
 });
 
 test('spillman: whitespace other than a single space inside of a timestamp', () => {
-    for (const gap of ['\u00a0', '  ', '\t', '\u2009']) {
+    for (const gap of ['\u00A0', '  ', '\t', '\u2009']) {
         const stamp = (time: string): string => time.replaceAll(' ', gap);
-        const narrative = parseNarrative(`\ufeff${stamp('15 54 54 09 18 2026 :')}${gap}${gap}Jane Doe first ${stamp('15 55 57 09 18 2026 :')}${gap}Jane Doe second\r\nDispatch: New Call from Spillman at Dispatch|`, ZONE);
+        const narrative = parseNarrative(`\uFEFF${stamp('15 54 54 09 18 2026 :')}${gap}${gap}Jane Doe first ${stamp('15 55 57 09 18 2026 :')}${gap}Jane Doe second\r\nDispatch: New Call from Spillman at Dispatch|`, ZONE);
 
         assert.equal(narrative.parser, 'spillman');
         assert.deepEqual(narrative.entries, [
